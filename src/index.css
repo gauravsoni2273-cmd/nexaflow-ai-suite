@@ -1,0 +1,145 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 224 40% 7%;
+    --foreground: 225 20% 93%;
+
+    --card: 224 42% 10%;
+    --card-foreground: 225 20% 93%;
+
+    --popover: 224 42% 10%;
+    --popover-foreground: 225 20% 93%;
+
+    --primary: 173 100% 45%;
+    --primary-foreground: 224 40% 7%;
+
+    --secondary: 224 30% 17%;
+    --secondary-foreground: 225 20% 93%;
+
+    --muted: 224 30% 17%;
+    --muted-foreground: 226 14% 41%;
+
+    --accent: 224 30% 17%;
+    --accent-foreground: 225 20% 93%;
+
+    --destructive: 0 100% 71%;
+    --destructive-foreground: 0 28% 14%;
+
+    --border: 224 30% 17%;
+    --input: 224 30% 17%;
+    --ring: 173 100% 45%;
+
+    --radius: 0.75rem;
+
+    --warning: 36 100% 64%;
+    --warning-foreground: 48 28% 14%;
+
+    --success: 173 56% 12%;
+    --success-foreground: 173 100% 45%;
+
+    --info: 229 100% 74%;
+    --info-bg: 231 42% 18%;
+
+    --text-secondary: 226 14% 60%;
+    --text-muted: 226 14% 41%;
+
+    --surface-hover: 226 34% 12%;
+
+    --sidebar-background: 224 42% 10%;
+    --sidebar-foreground: 226 14% 60%;
+    --sidebar-primary: 173 100% 45%;
+    --sidebar-primary-foreground: 224 40% 7%;
+    --sidebar-accent: 224 30% 17%;
+    --sidebar-accent-foreground: 225 20% 93%;
+    --sidebar-border: 224 30% 17%;
+    --sidebar-ring: 173 100% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01", "ss03";
+  }
+}
+
+@layer utilities {
+  .text-secondary {
+    color: hsl(var(--text-secondary));
+  }
+
+  .text-muted-custom {
+    color: hsl(var(--text-muted));
+  }
+
+  .surface-card {
+    @apply rounded-xl border border-border bg-card;
+  }
+
+  .surface-hover {
+    background-color: hsl(var(--surface-hover));
+  }
+
+  .gradient-text {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(180deg, hsl(225 20% 93%) 0%, hsl(226 14% 60%) 100%);
+  }
+
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(173 100% 45%) 0%, hsl(173 80% 35%) 100%);
+  }
+
+  .glow-primary {
+    box-shadow: 0 0 60px 20px hsl(173 100% 45% / 0.15);
+  }
+
+  .glow-primary-sm {
+    box-shadow: 0 0 20px 5px hsl(173 100% 45% / 0.1);
+  }
+
+  .badge-success {
+    @apply rounded-full px-3 py-1 text-xs font-semibold;
+    background-color: hsl(var(--success));
+    color: hsl(var(--success-foreground));
+  }
+
+  .badge-failed {
+    @apply rounded-full px-3 py-1 text-xs font-semibold;
+    background-color: hsl(var(--destructive-foreground));
+    color: hsl(var(--destructive));
+  }
+
+  .badge-running {
+    @apply rounded-full px-3 py-1 text-xs font-semibold;
+    background-color: hsl(var(--info-bg));
+    color: hsl(var(--info));
+  }
+
+  .badge-approval {
+    @apply rounded-full px-3 py-1 text-xs font-semibold;
+    background-color: hsl(var(--warning-foreground));
+    color: hsl(var(--warning));
+  }
+
+  .page-transition {
+    animation: pageIn 0.3s ease-out;
+  }
+
+  @keyframes pageIn {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
