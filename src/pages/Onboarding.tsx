@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,15 +17,36 @@ const stepsMeta = [
 
 const availablePlatforms = ["slack", "salesforce", "hubspot", "jira", "google_workspace", "asana", "notion", "github"];
 
+const SS_STEP = "nexaflow_onboarding_step";
+const SS_NAME = "nexaflow_onboarding_name";
+const SS_WORKSPACE = "nexaflow_onboarding_workspace";
+const SS_PLATFORMS = "nexaflow_onboarding_platforms";
+
 export default function Onboarding() {
-  const [step, setStep] = useState(0);
-  const [fullName, setFullName] = useState("");
-  const [workspaceName, setWorkspaceName] = useState("");
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+  const [step, setStepRaw] = useState(() => {
+    const saved = sessionStorage.getItem(SS_STEP);
+    return saved ? parseInt(saved, 10) : 0;
+  });
+  const [fullName, setFullName] = useState(() => sessionStorage.getItem(SS_NAME) || "");
+  const [workspaceName, setWorkspaceName] = useState(() => sessionStorage.getItem(SS_WORKSPACE) || "");
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(() => {
+    const saved = sessionStorage.getItem(SS_PLATFORMS);
+    return saved ? JSON.parse(saved) : [];
+  });
   const [isCompleting, setIsCompleting] = useState(false);
   const completingRef = useRef(false);
   const { user, profile } = useAuth();
   const navigate = useNavigate();
+
+  // Persist form data to sessionStorage
+  const updateStep = (newStep: number) => {
+    sessionStorage.setItem(SS_STEP, String(newStep));
+    setStepRaw(newStep);
+  };
+
+  useEffect(() => { sessionStorage.setItem(SS_NAME, fullName); }, [fullName]);
+  useEffect(() => { sessionStorage.setItem(SS_WORKSPACE, workspaceName); }, [workspaceName]);
+  useEffect(() => { sessionStorage.setItem(SS_PLATFORMS, JSON.stringify(selectedPlatforms)); }, [selectedPlatforms]);
 
   const handleNext = () => {
     if (completingRef.current) return;
@@ -38,7 +59,7 @@ export default function Onboarding() {
       return;
     }
     if (step < 2) {
-      setStep(step + 1);
+      updateStep(step + 1);
     } else {
       handleCompleteSetup();
     }
@@ -85,7 +106,13 @@ export default function Onboarding() {
         .update({ onboarding_completed: true })
         .eq("id", user.id);
 
-      // 5. Navigate to dashboard
+      // 5. Clear onboarding sessionStorage
+      sessionStorage.removeItem(SS_STEP);
+      sessionStorage.removeItem(SS_NAME);
+      sessionStorage.removeItem(SS_WORKSPACE);
+      sessionStorage.removeItem(SS_PLATFORMS);
+
+      // 6. Navigate to dashboard
       toast.success("Welcome to NexaFlow!");
       navigate("/dashboard", { replace: true });
     } catch (error) {
@@ -213,7 +240,7 @@ export default function Onboarding() {
           {/* Navigation */}
           <div className="mt-8 flex items-center justify-between">
             {step > 0 ? (
-              <Button variant="ghost" onClick={() => setStep(step - 1)}>Back</Button>
+              <Button variant="ghost" onClick={() => updateStep(step - 1)}>Back</Button>
             ) : (
               <div />
             )}
