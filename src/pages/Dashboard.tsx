@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
-import { Activity, Zap, CheckCircle, Coins, TrendingUp, BarChart3, Plus, Play, Plug, CreditCard, Lightbulb, Check } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import { Activity, Zap, CheckCircle, Coins, TrendingUp, Plus, Play, Plug, CreditCard, Lightbulb, Check, ArrowRight, X } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -31,18 +32,42 @@ function MiniSparkline({ data }: { data: number[] }) {
   );
 }
 
+function AnimatedNumber({ value, duration = 1000 }: { value: number; duration?: number }) {
+  const [display, setDisplay] = useState(0);
+
+  useEffect(() => {
+    if (value === 0) { setDisplay(0); return; }
+    let start = 0;
+    const increment = value / (duration / 16);
+    const timer = setInterval(() => {
+      start += increment;
+      if (start >= value) {
+        setDisplay(value);
+        clearInterval(timer);
+      } else {
+        setDisplay(Math.floor(start));
+      }
+    }, 16);
+    return () => clearInterval(timer);
+  }, [value, duration]);
+
+  return <>{display.toLocaleString()}</>;
+}
+
 export default function Dashboard() {
   const { workflows, loading: wfLoading, refetch: refetchWorkflows } = useWorkflows();
   const { runs, loading: runsLoading, refetch: refetchRuns } = useWorkflowRuns();
   const { org, loading: orgLoading, refetch: refetchOrg } = useOrg();
   const { integrations } = useIntegrations();
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const [runningTestId, setRunningTestId] = useState<string | null>(null);
+  const [showWelcome, setShowWelcome] = useState(false);
 
   const activeWorkflows = workflows.filter((w) => w.status === "active");
   const activeCount = activeWorkflows.length;
   const creditBalance = org?.credit_balance ?? 0;
-  const creditLimit = org?.monthly_credit_limit ?? 500;
+  const creditLimit = org?.monthly_credit_limit ?? 100;
   const connectedCount = integrations.filter((i) => i.status === "connected").length;
 
   const successRuns = runs.filter((r) => r.status === "success").length;
@@ -54,19 +79,25 @@ export default function Dashboard() {
     ? runs.slice(0, 12).map((r) => r.credits_consumed).reverse()
     : undefined;
 
-  const metrics = [
-    { label: "Active Workflows", value: String(activeCount), trend: activeCount > 0 ? `+${activeCount}` : undefined, icon: Activity },
-    { label: "Total Runs", value: String(runs.length), sparkline: runSparkline, icon: Zap },
-    { label: "Success Rate", value: avgSuccessRate === "\u2014" ? "\u2014" : `${avgSuccessRate}%`, icon: CheckCircle },
-    { label: "Credits Remaining", value: creditBalance.toLocaleString(), total: creditLimit, remaining: creditBalance, icon: Coins },
-  ];
-
   const loading = wfLoading || runsLoading || orgLoading;
   const chartData = runs.length > 0 ? buildChartData(runs) : [];
   const getWorkflowName = (wfId: string) => workflows.find((w) => w.id === wfId)?.name ?? "Unknown Workflow";
-
-  const isNewUser = workflows.length === 0 && runs.length === 0;
   const hasWorkflowsNoRuns = workflows.length > 0 && runs.length === 0;
+
+  // Welcome modal — show once per session for brand new users
+  useEffect(() => {
+    if (!loading && workflows.length === 0 && connectedCount === 0) {
+      const dismissed = sessionStorage.getItem("nexaflow_welcome_dismissed");
+      if (!dismissed) {
+        setShowWelcome(true);
+      }
+    }
+  }, [loading, workflows.length, connectedCount]);
+
+  const dismissWelcome = () => {
+    sessionStorage.setItem("nexaflow_welcome_dismissed", "true");
+    setShowWelcome(false);
+  };
 
   const onTestRun = async (workflow: Workflow) => {
     if (!org || runningTestId) return;
@@ -83,16 +114,25 @@ export default function Dashboard() {
     });
   };
 
-  // Getting started checklist for new users
-  const gettingStarted = [
-    { label: "Connect your tools", done: connectedCount > 0, detail: connectedCount > 0 ? `${connectedCount} connected` : "Not started", href: "/dashboard/integrations" },
-    { label: "Create your first workflow", done: workflows.length > 0, detail: workflows.length > 0 ? `${workflows.length} created` : "Not started", href: "/dashboard/workflows/new" },
-    { label: "Run a test execution", done: runs.length > 0, detail: runs.length > 0 ? `${runs.length} runs` : "Not started", href: undefined },
-    { label: "Explore analytics", done: runs.length >= 5, detail: runs.length >= 5 ? "Unlocked" : "Unlocked after first run", href: runs.length > 0 ? "/dashboard/analytics" : undefined },
+  const numericValue = (v: string) => {
+    const n = parseFloat(v.replace(/[^0-9.]/g, ""));
+    return isNaN(n) ? 0 : n;
+  };
+
+  const metrics = [
+    { label: "Active Workflows", value: String(activeCount), numeric: activeCount, trend: activeCount > 0 ? `+${activeCount}` : undefined, icon: Activity },
+    { label: "Total Runs", value: String(runs.length), numeric: runs.length, sparkline: runSparkline, icon: Zap },
+    { label: "Success Rate", value: avgSuccessRate === "\u2014" ? "\u2014" : `${avgSuccessRate}%`, numeric: numericValue(String(avgSuccessRate)), suffix: avgSuccessRate !== "\u2014" ? "%" : "", icon: CheckCircle },
+    { label: "Credits Remaining", value: creditBalance.toLocaleString(), numeric: creditBalance, total: creditLimit, remaining: creditBalance, icon: Coins },
   ];
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-6"
+    >
       <h1 className="text-2xl font-bold text-foreground">
         {profile?.full_name ? `Welcome back, ${profile.full_name.split(" ")[0]}!` : "Dashboard"}
       </h1>
@@ -100,7 +140,7 @@ export default function Dashboard() {
       {/* Metric Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {metrics.map((m) => (
-          <div key={m.label} className="surface-card p-5">
+          <div key={m.label} className="surface-card p-5 hover:-translate-y-0.5 hover:border-[#00E5CC]/20 transition-all duration-300">
             {loading ? (
               <Skeleton className="h-16 w-full" />
             ) : (
@@ -110,7 +150,9 @@ export default function Dashboard() {
                   <m.icon className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <div className="mt-2 flex items-end justify-between">
-                  <span className="text-2xl font-bold font-mono text-foreground">{m.value}</span>
+                  <span className="text-2xl font-bold font-mono text-foreground">
+                    {m.value === "\u2014" ? "\u2014" : <><AnimatedNumber value={m.numeric} />{m.suffix || ""}</>}
+                  </span>
                   {m.trend && (
                     <span className="flex items-center gap-0.5 text-xs font-medium text-primary">
                       <TrendingUp className="h-3 w-3" />
@@ -121,9 +163,9 @@ export default function Dashboard() {
                 </div>
                 {m.total !== undefined && (
                   <div className="mt-3">
-                    <Progress value={m.total > 0 ? (m.remaining! / m.total) * 100 : 0} className={`h-1.5 bg-secondary [&>div]:${creditBalance < 100 ? "bg-destructive" : creditBalance < 500 ? "bg-warning" : "bg-primary"}`} />
+                    <Progress value={m.total > 0 ? (m.remaining! / m.total) * 100 : 0} className={`h-1.5 bg-secondary [&>div]:${creditBalance < 30 ? "bg-destructive" : creditBalance < 100 ? "bg-warning" : "bg-primary"}`} />
                     <p className="mt-1 text-xs text-muted-foreground">
-                      <span className={`font-mono ${creditBalance < 100 ? "text-destructive" : creditBalance < 500 ? "text-warning" : "text-primary"}`}>{m.remaining!.toLocaleString()}</span> / {m.total.toLocaleString()}
+                      <span className={`font-mono ${creditBalance < 30 ? "text-destructive" : creditBalance < 100 ? "text-warning" : "text-primary"}`}>{m.remaining!.toLocaleString()}</span> / {m.total.toLocaleString()}
                     </p>
                   </div>
                 )}
@@ -169,33 +211,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* NEW USER: Getting Started Checklist */}
-      {!loading && isNewUser && (
-        <div className="surface-card p-6">
-          <h2 className="text-sm font-semibold text-foreground mb-4">Getting Started</h2>
-          <div className="space-y-3">
-            {gettingStarted.map((item, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                  item.done ? "bg-primary/20 text-primary" : "border border-border text-muted-foreground"
-                }`}>
-                  {item.done ? <Check className="h-3.5 w-3.5" /> : i + 1}
-                </div>
-                <div className="flex-1">
-                  <span className={`text-sm font-medium ${item.done ? "text-foreground" : "text-muted-foreground"}`}>{item.label}</span>
-                </div>
-                <span className={`text-xs ${item.done ? "text-primary" : "text-muted-foreground"}`}>{item.detail}</span>
-                {item.href && !item.done && (
-                  <Link to={item.href}>
-                    <Button size="sm" variant="ghost" className="h-7 text-xs text-primary">Go</Button>
-                  </Link>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* HAS WORKFLOWS BUT NO RUNS: Prompt to test */}
       {!loading && hasWorkflowsNoRuns && (
         <div className="surface-card p-6 text-center">
@@ -230,7 +245,7 @@ export default function Dashboard() {
 
       {/* ACTIVE USER: Chart + Runs Table */}
       {chartData.length > 0 && (
-        <div className="surface-card p-6">
+        <div className="surface-card p-6 hover:-translate-y-0.5 hover:border-[#00E5CC]/20 transition-all duration-300">
           <h2 className="mb-4 text-sm font-semibold text-foreground">Workflow Executions</h2>
           <ResponsiveContainer width="100%" height={280}>
             <AreaChart data={chartData}>
@@ -257,7 +272,7 @@ export default function Dashboard() {
 
       {/* Recent Runs Table */}
       {runs.length > 0 && (
-        <div className="surface-card">
+        <div className="surface-card hover:-translate-y-0.5 hover:border-[#00E5CC]/20 transition-all duration-300">
           <div className="border-b border-border px-6 py-4">
             <h2 className="text-sm font-semibold text-foreground">Recent Workflow Runs</h2>
           </div>
@@ -292,7 +307,7 @@ export default function Dashboard() {
           <h2 className="mb-4 text-sm font-semibold text-foreground">AI Recommendations</h2>
           <div className="grid gap-4 md:grid-cols-3">
             {generateRecommendations(workflows, runs).map((rec, i) => (
-              <div key={i} className="surface-card p-5">
+              <div key={i} className="surface-card p-5 hover:-translate-y-0.5 hover:border-[#00E5CC]/20 transition-all duration-300">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-sm font-medium text-foreground">{rec.workflow}</span>
                   <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${rec.impact === "Critical" ? "badge-failed" : rec.impact === "High" ? "badge-approval" : "badge-running"}`}>
@@ -318,7 +333,72 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-    </div>
+
+      {/* Welcome Modal */}
+      {showWelcome && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-xl bg-black/60">
+          <div
+            className="bg-[#0F1525] border border-[#1E2538] rounded-2xl p-8 max-w-md mx-4 w-full relative"
+            style={{ animation: "welcome-in 0.3s ease-out" }}
+          >
+            <button
+              onClick={dismissWelcome}
+              className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <div className="text-center mb-6">
+              <span className="text-2xl">✦</span>
+              <h2 className="mt-2 text-xl font-bold text-foreground">Welcome to NexaFlow</h2>
+              <p className="mt-2 text-sm text-muted-foreground">Your AI-powered workflow engine is ready.</p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-bold text-primary">1</div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-foreground">Connect your tools</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Slack, Jira, Salesforce, and more</p>
+                  <button
+                    onClick={() => { dismissWelcome(); navigate("/dashboard/integrations"); }}
+                    className="mt-1 text-xs text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+                  >
+                    Go to Integrations <ArrowRight className="h-3 w-3" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-bold text-primary">2</div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-foreground">Create your first AI workflow</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Describe what you want in plain English</p>
+                  <button
+                    onClick={() => { dismissWelcome(); navigate("/dashboard/workflows/new"); }}
+                    className="mt-1 text-xs text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+                  >
+                    Open AI Builder <ArrowRight className="h-3 w-3" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-[#0B0F1A] border border-[#1E2538] px-4 py-3 text-center">
+                <p className="text-xs text-muted-foreground">You have <span className="font-mono font-bold text-primary">100</span> free credits to start with.</p>
+              </div>
+            </div>
+
+            <Button
+              onClick={dismissWelcome}
+              className="w-full mt-6 gradient-primary text-primary-foreground"
+            >
+              Get Started
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </motion.div>
   );
 }
 

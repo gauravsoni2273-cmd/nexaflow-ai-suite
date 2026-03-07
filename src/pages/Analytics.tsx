@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Lightbulb, BarChart3 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
@@ -54,7 +55,12 @@ export default function Analytics() {
   const insights = generateInsights(workflows, runs);
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-6"
+    >
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-foreground">Analytics</h1>
         <div className="flex gap-1 rounded-lg border border-border p-1">
@@ -190,7 +196,7 @@ export default function Analytics() {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }
 

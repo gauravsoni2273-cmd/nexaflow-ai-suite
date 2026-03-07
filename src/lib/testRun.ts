@@ -2,6 +2,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { Workflow } from "@/types/database";
 
+const FIXED_TEST_RUN_COST = 20;
+
 interface TestRunOptions {
   workflow: Workflow;
   orgId: string;
@@ -33,6 +35,7 @@ export async function handleTestRun({ workflow, orgId, onComplete }: TestRunOpti
 
   if (runError || !run) {
     toast.error("Failed to start test run");
+    onComplete();
     return;
   }
 
@@ -40,39 +43,34 @@ export async function handleTestRun({ workflow, orgId, onComplete }: TestRunOpti
   await new Promise((resolve) => setTimeout(resolve, 1500 + Math.random() * 1500));
 
   // 3. Generate step results
-  const steps = (plan.steps ?? []).map((step: { step_number: number; platform: string; action: string; estimated_credits?: number }) => ({
+  const steps = (plan.steps ?? []).map((step: { step_number: number; platform: string; action: string }) => ({
     step_number: step.step_number,
     platform: step.platform,
     status: Math.random() > 0.15 ? "success" : "failed",
     response_summary: `${step.action} — completed`,
     duration_ms: Math.floor(Math.random() * 800) + 200,
-    credits: step.estimated_credits || 2,
   }));
 
-  const successSteps = steps.filter((s: { status: string }) => s.status === "success");
-  const totalCredits = successSteps.reduce((sum: number, s: { credits: number }) => sum + s.credits, 0);
   const allSuccess = steps.every((s: { status: string }) => s.status === "success");
 
-  // 4. Update the run record
+  // 4. Update the run record — fixed 20 credits per test run
   await supabase
     .from("workflow_runs")
     .update({
       status: allSuccess ? "success" : "failed",
       steps_json: steps,
-      credits_consumed: totalCredits,
+      credits_consumed: FIXED_TEST_RUN_COST,
       completed_at: new Date().toISOString(),
       error_message: allSuccess ? null : `Step ${steps.find((s: { status: string }) => s.status === "failed")?.step_number} failed`,
     })
     .eq("id", run.id);
 
-  // 5. Deduct credits
-  if (totalCredits > 0) {
-    await supabase.rpc("deduct_credits", {
-      p_org_id: orgId,
-      p_amount: totalCredits,
-      p_run_id: run.id,
-    });
-  }
+  // 5. Deduct fixed 20 credits
+  await supabase.rpc("deduct_credits", {
+    p_org_id: orgId,
+    p_amount: FIXED_TEST_RUN_COST,
+    p_run_id: run.id,
+  });
 
   // 6. Update workflow success rate
   const { data: allRuns } = await supabase
@@ -91,9 +89,9 @@ export async function handleTestRun({ workflow, orgId, onComplete }: TestRunOpti
 
   // 7. Show result
   if (allSuccess) {
-    toast.success(`"${workflow.name}" completed! ${totalCredits} credits used.`);
+    toast.success(`"${workflow.name}" completed! ${FIXED_TEST_RUN_COST} credits used.`);
   } else {
-    toast.error(`"${workflow.name}" had failures. ${totalCredits} credits used.`);
+    toast.error(`"${workflow.name}" had failures. ${FIXED_TEST_RUN_COST} credits used.`);
   }
 
   // 8. Trigger refetch

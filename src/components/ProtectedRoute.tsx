@@ -1,10 +1,9 @@
 import { ReactNode } from "react";
-import { Navigate, useLocation } from "react-router-dom";
+import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 
 export function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { session, profile, loading } = useAuth();
-  const location = useLocation();
+  const { session, loading } = useAuth();
 
   if (loading) {
     return (
@@ -16,12 +15,6 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
 
   if (!session) {
     return <Navigate to="/login" replace />;
-  }
-
-  // Redirect to onboarding if profile exists but onboarding not completed
-  // Don't redirect if already on the onboarding page
-  if (profile && !profile.onboarding_completed && location.pathname !== "/onboarding") {
-    return <Navigate to="/onboarding" replace />;
   }
 
   return <>{children}</>;

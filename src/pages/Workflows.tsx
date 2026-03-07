@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Plus, Pause, Play, Trash2, Eye, GitBranch, Loader2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
@@ -94,7 +95,12 @@ export default function Workflows() {
   };
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-6"
+    >
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-foreground">Workflows</h1>
         <Link to="/dashboard/workflows/new">
@@ -271,6 +277,6 @@ export default function Workflows() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </motion.div>
   );
 }

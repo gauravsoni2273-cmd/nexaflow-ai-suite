@@ -1,6 +1,7 @@
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Brain, BarChart3, Zap, Check, ArrowRight, Play } from "lucide-react";
+import { motion } from "framer-motion";
+import { Brain, BarChart3, Zap, Check, ArrowRight } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrg } from "@/hooks/useOrg";
 import { openRazorpayCheckout } from "@/lib/razorpay";
@@ -12,56 +13,111 @@ const features = [
   { icon: Zap, title: "One-Click Integrations", desc: "Connect to 200+ enterprise tools in seconds. No code, no config, just results." },
 ];
 
-const howItWorks = [
-  { emoji: "\u270D\uFE0F", title: "Describe in English", desc: "Tell NexaFlow what you want automated. \"When a deal closes, notify the team and create follow-up tasks.\"" },
-  { emoji: "\uD83E\uDDE0", title: "AI Builds the Plan", desc: "Our AI agent analyzes your connected tools, figures out the steps, sets approval gates, and generates an execution plan." },
-  { emoji: "\u26A1", title: "Deploy & Monitor", desc: "One click to deploy. Track success rates, credit usage, and get AI-powered optimization suggestions." },
-];
-
-const exampleFlow = [
-  { label: "HubSpot deal closes", emoji: "\uD83D\uDFE0" },
-  { label: "Slack notification", emoji: "\uD83D\uDCAC" },
-  { label: "Salesforce record", emoji: "\u2601\uFE0F" },
-  { label: "Calendar kickoff", emoji: "\uD83D\uDCC5" },
+const howItWorksData = [
+  {
+    step: "01",
+    icon: "\u270D\uFE0F",
+    title: "Describe in English",
+    description: "Tell NexaFlow what you want automated in plain English. No coding, no flowcharts.",
+    example: "\"When a deal closes, notify the team and create follow-up tasks.\"",
+  },
+  {
+    step: "02",
+    icon: "\uD83E\uDDE0",
+    title: "AI Builds the Plan",
+    description: "Our AI agent analyzes your tools, maps dependencies, sets approval gates, and generates an execution plan.",
+    example: "HubSpot \u2192 Slack \u2192 Salesforce \u2192 Calendar",
+  },
+  {
+    step: "03",
+    icon: "\u26A1",
+    title: "Deploy & Monitor",
+    description: "One click to deploy. Track success rates, credit usage, and get AI optimization suggestions.",
+    example: "94.7% success rate \u00B7 2.1s avg execution",
+  },
 ];
 
 const tiers = [
-  { name: "Free", price: "\u20B90", period: "/month", credits: "500 credits", features: ["5 workflows", "500 credits/month", "Basic analytics", "Email support"], cta: "Start Free", highlight: false },
-  { name: "Pro", price: "\u20B92,499", period: "/month", credits: "5,000 credits", features: ["Unlimited workflows", "5,000 credits/month", "Advanced analytics", "Priority support", "Custom integrations", "Team collaboration"], cta: "Start Pro Trial", highlight: true },
+  { name: "Free", price: "\u20B90", period: "/month", credits: "100 credits", features: ["5 workflows", "100 credits/month", "Basic analytics", "Email support"], cta: "Start Free", highlight: false },
+  { name: "Pro", price: "\u20B92,499", period: "/month", credits: "5,000 credits", features: ["Unlimited workflows", "5,000 credits/month", "Advanced analytics", "Priority support", "Custom integrations", "Team collaboration"], cta: "Upgrade to Pro", highlight: true },
   { name: "Enterprise", price: "Custom", period: "", credits: "Unlimited", features: ["Everything in Pro", "Unlimited credits", "SLA guarantee", "Dedicated CSM", "SSO & SAML", "On-premise option"], cta: "Contact Sales", highlight: false },
 ];
+
+function AnimatedBackground() {
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div
+        className="absolute w-[600px] h-[600px] rounded-full opacity-20 blur-[120px]"
+        style={{
+          background: "radial-gradient(circle, #00E5CC 0%, transparent 70%)",
+          top: "-10%",
+          left: "50%",
+          animation: "float 8s ease-in-out infinite",
+        }}
+      />
+      <div
+        className="absolute w-[400px] h-[400px] rounded-full opacity-10 blur-[100px]"
+        style={{
+          background: "radial-gradient(circle, #7B93FF 0%, transparent 70%)",
+          bottom: "20%",
+          right: "10%",
+          animation: "float-alt 12s ease-in-out infinite reverse",
+        }}
+      />
+      <div
+        className="absolute w-[300px] h-[300px] rounded-full opacity-10 blur-[80px]"
+        style={{
+          background: "radial-gradient(circle, #FFB547 0%, transparent 70%)",
+          top: "60%",
+          left: "5%",
+          animation: "float-alt 10s ease-in-out infinite 2s",
+        }}
+      />
+      <div
+        className="absolute inset-0 opacity-[0.03]"
+        style={{
+          backgroundImage: "linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)",
+          backgroundSize: "60px 60px",
+        }}
+      />
+    </div>
+  );
+}
 
 export default function Landing() {
   const { user, profile } = useAuth();
   const { org, refetch: refetchOrg } = useOrg();
   const navigate = useNavigate();
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 20);
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   const scrollToSection = (id: string) => {
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const handleProCta = () => {
-    if (!user) {
-      navigate("/signup");
-      return;
-    }
-    openRazorpayCheckout({
-      orgId: org?.id ?? profile?.org_id ?? "",
-      userEmail: user.email ?? "",
-      userName: profile?.full_name ?? "",
-      onSuccess: () => {
-        toast.success("Payment successful! Credits will be added shortly.");
-        refetchOrg();
-      },
-    });
-  };
-
   const handlePricingCta = (tierName: string) => {
     if (tierName === "Free") {
       navigate("/signup");
     } else if (tierName === "Pro") {
-      handleProCta();
+      if (!user) {
+        navigate("/signup");
+        return;
+      }
+      openRazorpayCheckout({
+        orgId: org?.id ?? profile?.org_id ?? "",
+        userEmail: user.email ?? "",
+        userName: profile?.full_name ?? "",
+        onSuccess: () => {
+          toast.success("Payment successful! Credits will be added shortly.");
+          refetchOrg();
+        },
+      });
     } else if (tierName === "Enterprise") {
       toast.info("Contact us at sales@nexaflow.ai for Enterprise pricing.");
       window.location.href = "mailto:sales@nexaflow.ai";
@@ -69,173 +125,236 @@ export default function Landing() {
   };
 
   return (
-    <div id="top" className="min-h-screen bg-background page-transition">
-      {/* Nav */}
-      <nav className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
+    <div id="top" className="min-h-screen bg-[#0B0F1A]">
+      {/* Nav — Glass on scroll */}
+      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+        scrolled
+          ? "bg-[#0B0F1A]/80 backdrop-blur-xl border-b border-[#1E2538]"
+          : "bg-transparent"
+      }`}>
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
           <div className="flex items-center gap-2">
             <div className="gradient-primary flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold text-primary-foreground">N</div>
-            <span className="text-lg font-bold text-foreground">NexaFlow</span>
+            <span className="text-lg font-bold text-[#E8EAF0]">NexaFlow</span>
           </div>
           <div className="hidden items-center gap-8 md:flex">
-            <button onClick={() => scrollToSection("product")} className="text-sm text-secondary hover:text-foreground transition-colors">Product</button>
-            <button onClick={() => scrollToSection("pricing")} className="text-sm text-secondary hover:text-foreground transition-colors">Pricing</button>
-            <button onClick={() => scrollToSection("top")} className="text-sm text-secondary hover:text-foreground transition-colors">Docs</button>
+            <button onClick={() => scrollToSection("product")} className="text-sm text-[#8B92A8] hover:text-[#E8EAF0] transition-colors font-medium">Product</button>
+            <button onClick={() => scrollToSection("pricing")} className="text-sm text-[#8B92A8] hover:text-[#E8EAF0] transition-colors font-medium">Pricing</button>
+            <button onClick={() => scrollToSection("product")} className="text-sm text-[#8B92A8] hover:text-[#E8EAF0] transition-colors font-medium">Docs</button>
           </div>
           <Link to="/dashboard">
-            <Button size="sm" className="gradient-primary text-primary-foreground">
+            <button className="px-5 py-2 bg-[#00E5CC] text-[#0B0F1A] font-bold text-sm rounded-lg hover:shadow-[0_0_30px_rgba(0,229,204,0.3)] transition-all duration-300">
               Open Dashboard
-              <ArrowRight className="ml-1 h-4 w-4" />
-            </Button>
+              <ArrowRight className="ml-1 h-3.5 w-3.5 inline" />
+            </button>
           </Link>
         </div>
       </nav>
 
       {/* Hero */}
-      <section className="relative overflow-hidden py-24 md:py-36">
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full bg-primary/10 blur-[120px]" />
-        <div className="relative mx-auto max-w-4xl px-6 text-center">
-          <h1 className="text-4xl font-extrabold leading-tight tracking-tight md:text-6xl lg:text-7xl">
-            <span className="gradient-text">AI Agents That Run</span>
-            <br />
-            <span className="gradient-text">Your Enterprise</span>
-          </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg text-secondary">
-            Build, deploy, and monitor intelligent workflows that connect your tools, automate decisions, and scale operations — all powered by autonomous AI agents.
-          </p>
-          <div className="mt-8 flex items-center justify-center gap-4">
-            <Link to="/signup">
-              <Button size="lg" className="gradient-primary text-primary-foreground px-8">
-                Start Free
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
-            <Button size="lg" variant="outline" className="border-border px-8">
-              <Play className="mr-2 h-4 w-4" />
-              Watch Demo
-            </Button>
-          </div>
-        </div>
+      <section className="relative pt-32 pb-20 px-6 md:px-12 text-center overflow-hidden">
+        <AnimatedBackground />
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="relative z-10"
+        >
+          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#00E5CC]/10 border border-[#00E5CC]/20 text-[#00E5CC] text-sm font-medium">
+            ✦ Agentic Workflow Intelligence
+          </span>
+        </motion.div>
+
+        <motion.h1
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.15 }}
+          className="relative z-10 mt-6 text-5xl md:text-7xl font-extrabold tracking-tight leading-[1.05]"
+          style={{
+            background: "linear-gradient(180deg, #FFFFFF 30%, #8B92A8 100%)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+          }}
+        >
+          AI Agents That Run{"\n"}Your Enterprise
+        </motion.h1>
+
+        <motion.p
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.3 }}
+          className="relative z-10 mt-6 text-lg text-[#8B92A8] max-w-xl mx-auto"
+        >
+          Describe any cross-platform workflow in plain English.
+          NexaFlow's AI agents plan, execute, and optimize it across all your tools.
+        </motion.p>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.45 }}
+          className="relative z-10 mt-10 flex gap-4 justify-center"
+        >
+          <button
+            onClick={() => navigate("/signup")}
+            className="px-8 py-3.5 bg-[#00E5CC] text-[#0B0F1A] font-bold rounded-xl hover:shadow-[0_0_40px_rgba(0,229,204,0.4)] transition-all duration-300 hover:-translate-y-0.5"
+          >
+            Start Free →
+          </button>
+          <button
+            onClick={() => scrollToSection("product")}
+            className="px-8 py-3.5 border border-[#2A3050] text-[#B8BED9] font-semibold rounded-xl hover:border-[#00E5CC]/50 transition-all duration-300"
+          >
+            See How It Works
+          </button>
+        </motion.div>
       </section>
 
       {/* How It Works */}
-      <section id="product" className="py-20">
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-foreground">How NexaFlow Works</h2>
-            <p className="mt-3 text-secondary">Three steps to automate any cross-platform workflow</p>
-          </div>
+      <section id="product" className="py-24 px-6 md:px-12 relative">
+        <motion.h2
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5 }}
+          className="text-3xl md:text-4xl font-bold text-center text-[#E8EAF0] mb-4"
+        >
+          How NexaFlow Works
+        </motion.h2>
+        <motion.p
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.2 }}
+          className="text-center text-[#8B92A8] mb-16 max-w-lg mx-auto"
+        >
+          Three steps to automate any cross-platform workflow
+        </motion.p>
 
-          <div className="grid gap-6 md:grid-cols-3">
-            {howItWorks.map((step, i) => (
-              <div key={step.title} className="surface-card p-6 text-center">
-                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-3xl">
-                  {step.emoji}
+        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
+          {howItWorksData.map((item, index) => (
+            <motion.div
+              key={item.step}
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: index * 0.15 }}
+              className="group relative"
+            >
+              <div className="bg-[#0F1525] border border-[#1E2538] rounded-2xl p-8 h-full hover:border-[#00E5CC]/30 transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_8px_30px_rgba(0,229,204,0.08)]">
+                <span className="text-sm font-mono text-[#00E5CC]/50 font-bold">{item.step}</span>
+                <div className="w-14 h-14 rounded-xl bg-[#0B0F1A] border border-[#1E2538] flex items-center justify-center mt-3 mb-5 text-2xl group-hover:border-[#00E5CC]/30 transition-colors duration-500">
+                  {item.icon}
                 </div>
-                <div className="mb-2 text-xs font-semibold text-primary tracking-widest uppercase">Step {i + 1}</div>
-                <h3 className="mb-2 text-lg font-semibold text-foreground">{step.title}</h3>
-                <p className="text-sm leading-relaxed text-secondary">{step.desc}</p>
+                <h3 className="text-xl font-bold text-[#E8EAF0] mb-3">{item.title}</h3>
+                <p className="text-[#8B92A8] text-sm leading-relaxed mb-4">{item.description}</p>
+                <div className="bg-[#0B0F1A] rounded-lg px-4 py-3 border border-[#1E2538]">
+                  <p className="text-xs text-[#5A6178] italic">{item.example}</p>
+                </div>
               </div>
-            ))}
-          </div>
-
-          {/* Example flow */}
-          <div className="mt-10 surface-card p-6">
-            <p className="mb-4 text-center text-sm font-medium text-muted-foreground">Example workflow</p>
-            <div className="flex items-center justify-center gap-2 flex-wrap">
-              {exampleFlow.map((item, i) => (
-                <div key={item.label} className="flex items-center gap-2 shrink-0">
-                  <div className="flex items-center gap-2 rounded-full border border-border bg-background px-4 py-2">
-                    <span className="text-base">{item.emoji}</span>
-                    <span className="text-xs font-medium text-foreground whitespace-nowrap">{item.label}</span>
-                  </div>
-                  {i < exampleFlow.length - 1 && (
-                    <ArrowRight className="h-3.5 w-3.5 text-primary shrink-0" />
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+            </motion.div>
+          ))}
         </div>
       </section>
 
       {/* Features */}
-      <section className="py-20">
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="grid gap-6 md:grid-cols-3">
-            {features.map((f) => (
-              <div key={f.title} className="surface-card p-6 transition-colors hover:border-primary/30">
-                <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                  <f.icon className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="mb-2 text-lg font-semibold text-foreground">{f.title}</h3>
-                <p className="text-sm leading-relaxed text-secondary">{f.desc}</p>
+      <section className="py-20 px-6 md:px-12">
+        <div className="max-w-6xl mx-auto grid gap-6 md:grid-cols-3">
+          {features.map((f, index) => (
+            <motion.div
+              key={f.title}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: index * 0.1 }}
+              whileHover={{ y: -6, transition: { duration: 0.3 } }}
+              className="bg-[#0F1525] border border-[#1E2538] rounded-2xl p-8 hover:border-[#00E5CC]/30 hover:shadow-[0_8px_30px_rgba(0,229,204,0.06)] transition-all duration-500 cursor-default"
+            >
+              <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[#00E5CC]/10">
+                <f.icon className="h-5 w-5 text-[#00E5CC]" />
               </div>
-            ))}
-          </div>
+              <h3 className="mb-2 text-lg font-semibold text-[#E8EAF0]">{f.title}</h3>
+              <p className="text-sm leading-relaxed text-[#8B92A8]">{f.desc}</p>
+            </motion.div>
+          ))}
         </div>
       </section>
 
       {/* Pricing */}
-      <section id="pricing" className="py-20">
-        <div className="mx-auto max-w-6xl px-6">
-          <h2 className="mb-12 text-center text-3xl font-bold text-foreground">Simple, transparent pricing</h2>
+      <section id="pricing" className="py-20 px-6 md:px-12">
+        <div className="max-w-6xl mx-auto">
+          <motion.h2
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="mb-12 text-center text-3xl md:text-4xl font-bold text-[#E8EAF0]"
+          >
+            Simple, transparent pricing
+          </motion.h2>
           <div className="grid gap-6 md:grid-cols-3">
-            {tiers.map((t) => (
-              <div
+            {tiers.map((t, index) => (
+              <motion.div
                 key={t.name}
-                className={`surface-card relative p-6 transition-colors ${
-                  t.highlight ? "border-primary/50 glow-primary-sm" : ""
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.1 }}
+                whileHover={{ y: -4, transition: { duration: 0.3 } }}
+                className={`relative rounded-2xl p-8 overflow-hidden ${
+                  t.highlight
+                    ? "bg-gradient-to-b from-[#0D2E2A] to-[#0F1525] border border-[#00E5CC]/30"
+                    : "bg-[#0F1525] border border-[#1E2538]"
                 }`}
+                style={t.highlight ? { animation: "pulse-glow 3s ease-in-out infinite" } : undefined}
               >
                 {t.highlight && (
-                  <div className="absolute -top-px left-6 right-6 h-0.5 gradient-primary rounded-full" />
+                  <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[#00E5CC] to-transparent" />
                 )}
-                <h3 className="text-lg font-semibold text-foreground">{t.name}</h3>
+                <h3 className="text-lg font-semibold text-[#E8EAF0]">{t.name}</h3>
                 <div className="mt-4 flex items-baseline gap-1">
-                  <span className="text-3xl font-bold font-mono text-foreground">{t.price}</span>
-                  <span className="text-sm text-muted-foreground">{t.period}</span>
+                  <span className="text-3xl font-bold font-mono text-[#E8EAF0]">{t.price}</span>
+                  <span className="text-sm text-[#5A6178]">{t.period}</span>
                 </div>
-                <p className="mt-1 text-sm text-primary">{t.credits}</p>
+                <p className="mt-1 text-sm text-[#00E5CC]">{t.credits}</p>
                 <ul className="mt-6 space-y-3">
                   {t.features.map((feat) => (
-                    <li key={feat} className="flex items-center gap-2 text-sm text-secondary">
-                      <Check className="h-4 w-4 shrink-0 text-primary" />
+                    <li key={feat} className="flex items-center gap-2 text-sm text-[#8B92A8]">
+                      <Check className="h-4 w-4 shrink-0 text-[#00E5CC]" />
                       {feat}
                     </li>
                   ))}
                 </ul>
-                <Button
-                  className={`mt-6 w-full ${
-                    t.highlight
-                      ? "gradient-primary text-primary-foreground"
-                      : "border-border"
-                  }`}
-                  variant={t.highlight ? "default" : "outline"}
+                <button
                   onClick={() => handlePricingCta(t.name)}
+                  className={`w-full mt-6 py-3 font-bold rounded-lg transition-all duration-300 ${
+                    t.highlight
+                      ? "bg-[#00E5CC] text-[#0B0F1A] hover:shadow-[0_0_30px_rgba(0,229,204,0.3)]"
+                      : "border border-[#2A3050] text-[#B8BED9] font-semibold hover:border-[#00E5CC]/50"
+                  }`}
                 >
                   {t.cta}
-                </Button>
-              </div>
+                </button>
+              </motion.div>
             ))}
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-border py-10">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-6 md:flex-row">
+      <footer className="border-t border-[#1E2538] py-10 px-6">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 md:flex-row">
           <div className="flex items-center gap-2">
             <div className="gradient-primary flex h-6 w-6 items-center justify-center rounded text-xs font-bold text-primary-foreground">N</div>
-            <span className="text-sm font-semibold text-foreground">NexaFlow</span>
+            <span className="text-sm font-semibold text-[#E8EAF0]">NexaFlow</span>
           </div>
           <div className="flex gap-6">
-            <button onClick={() => scrollToSection("top")} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Privacy</button>
-            <button onClick={() => scrollToSection("top")} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Terms</button>
-            <button onClick={() => scrollToSection("top")} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Docs</button>
-            <button onClick={() => scrollToSection("top")} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Status</button>
+            <button onClick={() => scrollToSection("top")} className="text-xs text-[#5A6178] hover:text-[#E8EAF0] transition-colors">Privacy</button>
+            <button onClick={() => scrollToSection("top")} className="text-xs text-[#5A6178] hover:text-[#E8EAF0] transition-colors">Terms</button>
+            <button onClick={() => scrollToSection("top")} className="text-xs text-[#5A6178] hover:text-[#E8EAF0] transition-colors">Docs</button>
+            <button onClick={() => scrollToSection("top")} className="text-xs text-[#5A6178] hover:text-[#E8EAF0] transition-colors">Status</button>
           </div>
-          <p className="text-xs text-muted-foreground">&copy; 2026 NexaFlow. All rights reserved.</p>
+          <p className="text-xs text-[#5A6178]">&copy; 2026 NexaFlow. All rights reserved.</p>
         </div>
       </footer>
     </div>

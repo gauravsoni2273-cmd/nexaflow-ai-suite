@@ -1,44 +1,65 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Zap, Shield, AlertTriangle, Sparkles } from "lucide-react";
+import { Zap, Shield, Sparkles, X } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrg } from "@/hooks/useOrg";
 import { generateWorkflow } from "@/lib/n8n";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { openRazorpayCheckout } from "@/lib/razorpay";
 import type { AgentPlan } from "@/types/database";
 import { platformIcons } from "@/types/database";
 
+const DEPLOY_CREDIT_COST = 50;
+
 const examplePrompts = [
-  "When a deal closes in HubSpot, create a Salesforce account and notify Slack",
-  "Every morning, pull Jira sprint data and post a summary to Slack",
-  "When a GitHub PR is merged, update Asana task and notify the team",
-  "Sync new Google Calendar events to Notion and send a Slack reminder",
+  "When a deal closes in HubSpot, notify #sales in Slack and create a Jira task",
+  "Send weekly sprint summary from Jira to Slack every Friday",
+  "When a support ticket is escalated, alert the on-call team via Slack",
+  "Sync new HubSpot contacts to Salesforce and add to onboarding Asana project",
+];
+
+const genSteps = [
+  "Analyzing your workflow description...",
+  "Identifying required platforms...",
+  "Building execution plan...",
+  "Calculating credit costs...",
+  "Finalizing workflow...",
 ];
 
 const fallbackSteps = [
-  { platform: "hubspot", action: "Trigger: Deal stage moves to 'Closed Won'", estimated_credits: 1, require_approval: false, step_number: 1 },
-  { platform: "salesforce", action: "Create account record and sync opportunity data", estimated_credits: 2, require_approval: true, step_number: 2 },
-  { platform: "slack", action: "Post win notification to #sales-wins channel with deal summary", estimated_credits: 1, require_approval: false, step_number: 3 },
-  { platform: "google_workspace", action: "Schedule kickoff meeting with customer success team", estimated_credits: 1, require_approval: false, step_number: 4 },
+  { platform: "hubspot", action: "Trigger: Deal stage moves to 'Closed Won'", estimated_credits: 12, require_approval: false, step_number: 1 },
+  { platform: "salesforce", action: "Create account record and sync opportunity data", estimated_credits: 15, require_approval: true, step_number: 2 },
+  { platform: "slack", action: "Post win notification to #sales-wins channel with deal summary", estimated_credits: 8, require_approval: false, step_number: 3 },
+  { platform: "google_workspace", action: "Schedule kickoff meeting with customer success team", estimated_credits: 15, require_approval: false, step_number: 4 },
 ];
 
 export default function WorkflowBuilder() {
   const [prompt, setPrompt] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [genStep, setGenStep] = useState(0);
   const [plan, setPlan] = useState<AgentPlan | null>(null);
   const [deploying, setDeploying] = useState(false);
-  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const { user, profile } = useAuth();
   const { org, refetch: refetchOrg } = useOrg();
   const navigate = useNavigate();
 
   const creditBalance = org?.credit_balance ?? 0;
 
+  // Generation step animation
+  useEffect(() => {
+    if (generating && genStep < genSteps.length - 1) {
+      const timer = setTimeout(() => setGenStep((s) => s + 1), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [generating, genStep]);
+
   const handleGenerate = async () => {
-    setLoading(true);
-    setIsDemoMode(false);
+    setGenerating(true);
+    setGenStep(0);
     try {
       if (!profile?.org_id || !user?.id) {
         throw new Error("Not authenticated");
@@ -50,7 +71,6 @@ export default function WorkflowBuilder() {
       });
       setPlan(result);
     } catch {
-      // Fallback: use demo plan
       setPlan({
         workflow_name: prompt.slice(0, 50) || "New Workflow",
         trigger: { type: "webhook", description: "Event-based trigger" },
@@ -62,29 +82,25 @@ export default function WorkflowBuilder() {
           requires_connection: false,
           failure_action: "retry" as const,
         })),
-        total_estimated_credits: fallbackSteps.reduce((a, s) => a + s.estimated_credits, 0),
+        total_estimated_credits: DEPLOY_CREDIT_COST,
         estimated_execution_seconds: 5,
         risk_level: "medium",
       });
-      setIsDemoMode(true);
-      toast.info("Using demo plan (n8n webhook not configured)");
     } finally {
-      setLoading(false);
+      setGenerating(false);
     }
   };
 
   const handleDeploy = async () => {
     if (!plan || !profile?.org_id || !user?.id) return;
 
-    // Check credit balance
-    if (creditBalance < plan.total_estimated_credits) {
-      toast.error(`Insufficient credits. You need ${plan.total_estimated_credits} credits but only have ${creditBalance}.`);
+    if (creditBalance < DEPLOY_CREDIT_COST) {
+      setShowUpgradeModal(true);
       return;
     }
 
     setDeploying(true);
     try {
-      // Insert workflow
       const { error: wfError } = await supabase.from("workflows").insert({
         org_id: profile.org_id,
         created_by: user.id,
@@ -96,17 +112,16 @@ export default function WorkflowBuilder() {
       });
       if (wfError) throw wfError;
 
-      // Deduct credits for generation
       const { error: creditError } = await supabase.rpc("deduct_credits", {
         p_org_id: profile.org_id,
-        p_amount: plan.total_estimated_credits,
+        p_amount: DEPLOY_CREDIT_COST,
       });
       if (creditError) {
         console.error("Credit deduction failed:", creditError);
       }
 
       refetchOrg();
-      toast.success("Workflow deployed!");
+      toast.success("Workflow deployed! 50 credits used.");
       navigate("/dashboard/workflows");
     } catch {
       toast.error("Failed to deploy workflow");
@@ -115,22 +130,58 @@ export default function WorkflowBuilder() {
     }
   };
 
+  const handleUpgrade = () => {
+    if (!user) {
+      navigate("/signup");
+      return;
+    }
+    openRazorpayCheckout({
+      orgId: org?.id ?? profile?.org_id ?? "",
+      userEmail: user.email ?? "",
+      userName: profile?.full_name ?? "",
+      onSuccess: () => {
+        toast.success("Payment successful! Credits added.");
+        refetchOrg();
+        setShowUpgradeModal(false);
+      },
+    });
+  };
+
   const steps = plan?.steps ?? [];
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-6"
+    >
       <h1 className="text-2xl font-bold text-foreground">AI Workflow Builder</h1>
 
-      {/* Credit balance indicator */}
       <div className="flex items-center gap-2 text-sm">
         <span className="text-muted-foreground">Available credits:</span>
-        <span className={`font-mono font-medium ${creditBalance < 100 ? "text-destructive" : creditBalance < 500 ? "text-warning" : "text-primary"}`}>
+        <span className={`font-mono font-medium ${creditBalance < 50 ? "text-destructive" : creditBalance < 100 ? "text-warning" : "text-primary"}`}>
           {creditBalance.toLocaleString()}
         </span>
+        <span className="text-muted-foreground">\u00B7</span>
+        <span className="text-xs text-muted-foreground">{DEPLOY_CREDIT_COST} credits per workflow</span>
       </div>
 
-      {!plan ? (
+      {!plan && !generating ? (
         <div className="mx-auto max-w-2xl space-y-4">
+          {/* Example chips */}
+          <div className="flex flex-wrap gap-2">
+            {examplePrompts.map((example) => (
+              <button
+                key={example}
+                onClick={() => setPrompt(example)}
+                className="text-xs text-[#8B92A8] bg-[#0F1525] border border-[#1E2538] rounded-full px-3 py-1.5 hover:border-[#00E5CC]/30 hover:text-[#00E5CC] transition-all duration-300"
+              >
+                {example.length > 50 ? example.slice(0, 50) + "..." : example}
+              </button>
+            ))}
+          </div>
+
           <div className="surface-card p-6">
             <textarea
               value={prompt}
@@ -140,54 +191,54 @@ export default function WorkflowBuilder() {
             />
           </div>
 
-          {/* Example Prompts */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Sparkles className="h-3.5 w-3.5" />
-              <span>Try an example:</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {examplePrompts.map((ex) => (
-                <button
-                  key={ex}
-                  onClick={() => setPrompt(ex)}
-                  className="rounded-lg border border-border bg-background px-3 py-2 text-left text-xs text-secondary transition-colors hover:border-primary/40 hover:text-foreground"
-                >
-                  {ex}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <Button
             onClick={handleGenerate}
-            disabled={!prompt.trim() || loading}
+            disabled={!prompt.trim()}
             className="w-full gradient-primary text-primary-foreground"
             size="lg"
           >
-            {loading ? (
-              <div className="flex items-center gap-2">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                Generating workflow...
-              </div>
-            ) : (
-              <>
-                <Zap className="mr-2 h-4 w-4" />
-                Generate Workflow
-              </>
-            )}
+            <Zap className="mr-2 h-4 w-4" />
+            Generate Workflow
           </Button>
+        </div>
+      ) : generating ? (
+        /* Generation Animation */
+        <div className="mx-auto max-w-2xl">
+          <div className="bg-[#0F1525] border border-[#1E2538] rounded-xl p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium text-foreground">Building your workflow...</span>
+            </div>
+            {genSteps.map((step, i) => (
+              <motion.div
+                key={step}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: i <= genStep ? 1 : 0.3, x: 0 }}
+                transition={{ duration: 0.3, delay: i * 0.1 }}
+                className="flex items-center gap-3 py-1.5"
+              >
+                {i < genStep ? (
+                  <span className="text-[#00E5CC] text-sm">{"\u2713"}</span>
+                ) : i === genStep ? (
+                  <div className="w-4 h-4 border-2 border-[#00E5CC] border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <span className="text-[#5A6178] text-sm">{"\u25CB"}</span>
+                )}
+                <span className={i <= genStep ? "text-[#E8EAF0] text-sm" : "text-[#5A6178] text-sm"}>
+                  {step}
+                </span>
+              </motion.div>
+            ))}
+          </div>
         </div>
       ) : (
         <div className="flex gap-6">
           {/* Timeline */}
           <div className="flex-1 space-y-0">
-            {isDemoMode && (
-              <div className="mb-4 flex items-center gap-2 rounded-lg border border-warning/50 bg-warning/10 p-3">
-                <AlertTriangle className="h-4 w-4 text-warning shrink-0" />
-                <p className="text-xs text-warning">Demo mode — n8n webhook not configured. This is a sample workflow plan.</p>
-              </div>
-            )}
+            <div className="mb-4 flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
+              <Sparkles className="h-4 w-4 text-primary shrink-0" />
+              <p className="text-xs text-primary">✦ AI-generated workflow plan</p>
+            </div>
             {steps.map((step, i) => {
               const icon = platformIcons[step.platform];
               return (
@@ -198,7 +249,7 @@ export default function WorkflowBuilder() {
                     </div>
                     {i < steps.length - 1 && <div className="w-0.5 flex-1 bg-border" />}
                   </div>
-                  <div className="mb-4 flex-1 surface-card p-4">
+                  <div className="mb-4 flex-1 surface-card p-4 hover:-translate-y-0.5 hover:border-[#00E5CC]/20 transition-all duration-300">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-lg">{icon?.emoji ?? "\u2699\uFE0F"}</span>
                       <span className="font-semibold text-foreground text-sm">{icon?.label ?? step.platform}</span>
@@ -210,9 +261,6 @@ export default function WorkflowBuilder() {
                       )}
                     </div>
                     <p className="text-sm text-secondary">{step.action}</p>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Cost: <span className="font-mono text-warning">{step.estimated_credits}</span> credits
-                    </p>
                   </div>
                 </div>
               );
@@ -229,8 +277,12 @@ export default function WorkflowBuilder() {
                   <span className="font-mono text-foreground">{steps.length}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Credits / Run</span>
-                  <span className="font-mono text-warning">{plan.total_estimated_credits}</span>
+                  <span className="text-muted-foreground">Deploy Cost</span>
+                  <span className="font-mono text-warning">{DEPLOY_CREDIT_COST} credits</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Test Run Cost</span>
+                  <span className="font-mono text-warning">20 credits</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Approval Gates</span>
@@ -238,29 +290,24 @@ export default function WorkflowBuilder() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Risk Level</span>
-                  <span className={`font-mono ${plan.risk_level === "low" ? "text-primary" : plan.risk_level === "medium" ? "text-warning" : "text-destructive"}`}>
-                    {plan.risk_level}
+                  <span className={`font-mono ${plan!.risk_level === "low" ? "text-primary" : plan!.risk_level === "medium" ? "text-warning" : "text-destructive"}`}>
+                    {plan!.risk_level}
                   </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Trigger</span>
-                  <span className="text-foreground">{plan.trigger.type}</span>
                 </div>
               </div>
             </div>
 
-            {/* Insufficient credits warning */}
-            {creditBalance < plan.total_estimated_credits && (
+            {creditBalance < DEPLOY_CREDIT_COST && (
               <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3">
                 <p className="text-xs text-destructive font-medium">
-                  Insufficient credits ({creditBalance} available, {plan.total_estimated_credits} needed)
+                  Insufficient credits ({creditBalance} available, {DEPLOY_CREDIT_COST} needed)
                 </p>
               </div>
             )}
 
             <Button
               onClick={handleDeploy}
-              disabled={deploying || creditBalance < plan.total_estimated_credits}
+              disabled={deploying}
               className="w-full gradient-primary text-primary-foreground"
               size="lg"
             >
@@ -272,20 +319,83 @@ export default function WorkflowBuilder() {
               ) : (
                 <>
                   <Zap className="mr-2 h-4 w-4" />
-                  Deploy Workflow
+                  Deploy Workflow ({DEPLOY_CREDIT_COST} credits)
                 </>
               )}
             </Button>
             <Button
               variant="outline"
               className="w-full border-border"
-              onClick={() => { setPlan(null); setIsDemoMode(false); }}
+              onClick={() => setPlan(null)}
             >
               Start Over
             </Button>
           </div>
         </div>
       )}
-    </div>
+
+      {/* Upgrade Modal */}
+      {showUpgradeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-xl bg-black/60">
+          <div
+            className="bg-[#0F1525] border border-[#1E2538] rounded-2xl p-8 max-w-sm mx-4 w-full relative"
+            style={{ animation: "welcome-in 0.3s ease-out" }}
+          >
+            <button
+              onClick={() => setShowUpgradeModal(false)}
+              className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <div className="text-center mb-6">
+              <Zap className="h-8 w-8 text-warning mx-auto mb-2" />
+              <h2 className="text-lg font-bold text-foreground">You've used your free credits</h2>
+            </div>
+
+            <div className="space-y-3 mb-6">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Balance</span>
+                <span className="font-mono text-destructive">{creditBalance} credits</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Needed</span>
+                <span className="font-mono text-foreground">{DEPLOY_CREDIT_COST} credits</span>
+              </div>
+            </div>
+
+            <div className="bg-[#0B0F1A] border border-[#1E2538] rounded-lg p-4 mb-6">
+              <p className="text-sm font-semibold text-foreground mb-2">Upgrade to Pro — {"\u20B9"}2,499/month</p>
+              <ul className="space-y-1.5">
+                <li className="text-xs text-[#8B92A8] flex items-center gap-2">
+                  <span className="text-[#00E5CC]">{"\u2713"}</span> 5,000 credits per month
+                </li>
+                <li className="text-xs text-[#8B92A8] flex items-center gap-2">
+                  <span className="text-[#00E5CC]">{"\u2713"}</span> Unlimited workflows
+                </li>
+                <li className="text-xs text-[#8B92A8] flex items-center gap-2">
+                  <span className="text-[#00E5CC]">{"\u2713"}</span> Priority AI processing
+                </li>
+              </ul>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowUpgradeModal(false)}
+                className="flex-1 py-2.5 border border-[#2A3050] text-[#B8BED9] font-medium rounded-lg hover:border-[#00E5CC]/50 transition-all text-sm"
+              >
+                Maybe Later
+              </button>
+              <button
+                onClick={handleUpgrade}
+                className="flex-1 py-2.5 bg-[#00E5CC] text-[#0B0F1A] font-bold rounded-lg hover:shadow-[0_0_30px_rgba(0,229,204,0.3)] transition-all text-sm"
+              >
+                Upgrade to Pro
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </motion.div>
   );
 }

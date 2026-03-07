@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { useIntegrations } from "@/hooks/useIntegrations";
 import { timeAgo } from "@/lib/helpers";
@@ -90,7 +91,12 @@ export default function Integrations() {
   }
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-6"
+    >
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-foreground">Integrations</h1>
         <span className="text-sm text-muted-foreground">
@@ -160,6 +166,6 @@ export default function Integrations() {
         onClose={() => { setDisconnectPlatform(null); setDisconnectId(null); }}
         onDisconnect={handleDisconnect}
       />
-    </div>
+    </motion.div>
   );
 }
