@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Zap, Shield } from "lucide-react";
+import { Zap, Shield, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useOrg } from "@/hooks/useOrg";
 import { generateWorkflow } from "@/lib/n8n";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -21,11 +22,16 @@ export default function WorkflowBuilder() {
   const [loading, setLoading] = useState(false);
   const [plan, setPlan] = useState<AgentPlan | null>(null);
   const [deploying, setDeploying] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const { user, profile } = useAuth();
+  const { org, refetch: refetchOrg } = useOrg();
   const navigate = useNavigate();
+
+  const creditBalance = org?.credit_balance ?? 0;
 
   const handleGenerate = async () => {
     setLoading(true);
+    setIsDemoMode(false);
     try {
       if (!profile?.org_id || !user?.id) {
         throw new Error("Not authenticated");
@@ -36,8 +42,8 @@ export default function WorkflowBuilder() {
         nl_description: prompt,
       });
       setPlan(result);
-    } catch (err) {
-      // Fallback: use mock plan for demo
+    } catch {
+      // Fallback: use demo plan
       setPlan({
         workflow_name: prompt.slice(0, 50) || "New Workflow",
         trigger: { type: "webhook", description: "Event-based trigger" },
@@ -53,6 +59,7 @@ export default function WorkflowBuilder() {
         estimated_execution_seconds: 5,
         risk_level: "medium",
       });
+      setIsDemoMode(true);
       toast.info("Using demo plan (n8n webhook not configured)");
     } finally {
       setLoading(false);
@@ -61,9 +68,17 @@ export default function WorkflowBuilder() {
 
   const handleDeploy = async () => {
     if (!plan || !profile?.org_id || !user?.id) return;
+
+    // Check credit balance
+    if (creditBalance < plan.total_estimated_credits) {
+      toast.error(`Insufficient credits. You need ${plan.total_estimated_credits} credits but only have ${creditBalance}.`);
+      return;
+    }
+
     setDeploying(true);
     try {
-      const { error } = await supabase.from("workflows").insert({
+      // Insert workflow
+      const { error: wfError } = await supabase.from("workflows").insert({
         org_id: profile.org_id,
         created_by: user.id,
         name: plan.workflow_name,
@@ -72,10 +87,22 @@ export default function WorkflowBuilder() {
         status: "active",
         trigger_type: plan.trigger.type,
       });
-      if (error) throw error;
+      if (wfError) throw wfError;
+
+      // Deduct credits for generation
+      const { error: creditError } = await supabase.rpc("deduct_credits", {
+        p_org_id: profile.org_id,
+        p_amount: plan.total_estimated_credits,
+      });
+      if (creditError) {
+        console.error("Credit deduction failed:", creditError);
+        // Workflow was still created, just log the credit error
+      }
+
+      refetchOrg();
       toast.success("Workflow deployed!");
       navigate("/dashboard/workflows");
-    } catch (err) {
+    } catch {
       toast.error("Failed to deploy workflow");
     } finally {
       setDeploying(false);
@@ -87,6 +114,14 @@ export default function WorkflowBuilder() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-foreground">AI Workflow Builder</h1>
+
+      {/* Credit balance indicator */}
+      <div className="flex items-center gap-2 text-sm">
+        <span className="text-muted-foreground">Available credits:</span>
+        <span className={`font-mono font-medium ${creditBalance < 100 ? "text-destructive" : creditBalance < 500 ? "text-warning" : "text-primary"}`}>
+          {creditBalance.toLocaleString()}
+        </span>
+      </div>
 
       {!plan ? (
         <div className="mx-auto max-w-2xl space-y-4">
@@ -121,6 +156,12 @@ export default function WorkflowBuilder() {
         <div className="flex gap-6">
           {/* Timeline */}
           <div className="flex-1 space-y-0">
+            {isDemoMode && (
+              <div className="mb-4 flex items-center gap-2 rounded-lg border border-warning/50 bg-warning/10 p-3">
+                <AlertTriangle className="h-4 w-4 text-warning shrink-0" />
+                <p className="text-xs text-warning">Demo mode — n8n webhook not configured. This is a sample workflow plan.</p>
+              </div>
+            )}
             {steps.map((step, i) => {
               const icon = platformIcons[step.platform];
               return (
@@ -133,7 +174,7 @@ export default function WorkflowBuilder() {
                   </div>
                   <div className="mb-4 flex-1 surface-card p-4">
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="text-lg">{icon?.emoji ?? "⚙️"}</span>
+                      <span className="text-lg">{icon?.emoji ?? "\u2699\uFE0F"}</span>
                       <span className="font-semibold text-foreground text-sm">{icon?.label ?? step.platform}</span>
                       {step.require_approval && (
                         <span className="badge-approval ml-auto flex items-center gap-1">
@@ -181,9 +222,19 @@ export default function WorkflowBuilder() {
                 </div>
               </div>
             </div>
+
+            {/* Insufficient credits warning */}
+            {creditBalance < plan.total_estimated_credits && (
+              <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3">
+                <p className="text-xs text-destructive font-medium">
+                  Insufficient credits ({creditBalance} available, {plan.total_estimated_credits} needed)
+                </p>
+              </div>
+            )}
+
             <Button
               onClick={handleDeploy}
-              disabled={deploying}
+              disabled={deploying || creditBalance < plan.total_estimated_credits}
               className="w-full gradient-primary text-primary-foreground"
               size="lg"
             >
@@ -202,7 +253,7 @@ export default function WorkflowBuilder() {
             <Button
               variant="outline"
               className="w-full border-border"
-              onClick={() => setPlan(null)}
+              onClick={() => { setPlan(null); setIsDemoMode(false); }}
             >
               Start Over
             </Button>

@@ -22,6 +22,7 @@ export interface UserProfile {
   email: string;
   full_name: string | null;
   role: UserRole;
+  onboarding_completed: boolean;
   created_at: string;
 }
 

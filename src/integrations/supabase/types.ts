@@ -46,6 +46,7 @@ export type Database = {
           email: string
           full_name: string | null
           role: Database["public"]["Enums"]["user_role"]
+          onboarding_completed: boolean
           created_at: string
         }
         Insert: {
@@ -54,6 +55,7 @@ export type Database = {
           email: string
           full_name?: string | null
           role?: Database["public"]["Enums"]["user_role"]
+          onboarding_completed?: boolean
           created_at?: string
         }
         Update: {
@@ -62,6 +64,7 @@ export type Database = {
           email?: string
           full_name?: string | null
           role?: Database["public"]["Enums"]["user_role"]
+          onboarding_completed?: boolean
           created_at?: string
         }
         Relationships: [
