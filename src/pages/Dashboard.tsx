@@ -1,12 +1,18 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Activity, Zap, CheckCircle, Coins, TrendingUp, BarChart3, Plus } from "lucide-react";
+import { Activity, Zap, CheckCircle, Coins, TrendingUp, BarChart3, Plus, Play, Plug, CreditCard, Lightbulb, Check } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { useWorkflows } from "@/hooks/useWorkflows";
 import { useWorkflowRuns } from "@/hooks/useWorkflowRuns";
 import { useOrg } from "@/hooks/useOrg";
+import { useIntegrations } from "@/hooks/useIntegrations";
+import { useAuth } from "@/hooks/useAuth";
 import { Skeleton } from "@/components/ui/skeleton";
+import { handleTestRun } from "@/lib/testRun";
+import { timeAgo } from "@/lib/helpers";
+import type { Workflow } from "@/types/database";
 
 function StatusBadge({ status }: { status: string }) {
   const cls = status === "success" ? "badge-success" : status === "failed" ? "badge-failed" : status === "running" ? "badge-running" : "badge-approval";
@@ -25,38 +31,24 @@ function MiniSparkline({ data }: { data: number[] }) {
   );
 }
 
-function EmptyState({ title, description, actionLabel, actionHref }: { title: string; description: string; actionLabel?: string; actionHref?: string }) {
-  return (
-    <div className="surface-card flex flex-col items-center justify-center py-16 px-6 text-center">
-      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-        <BarChart3 className="h-6 w-6 text-primary" />
-      </div>
-      <h3 className="text-lg font-semibold text-foreground">{title}</h3>
-      <p className="mt-2 max-w-sm text-sm text-muted-foreground">{description}</p>
-      {actionLabel && actionHref && (
-        <Link to={actionHref}>
-          <Button className="mt-4 gradient-primary text-primary-foreground">
-            <Plus className="mr-2 h-4 w-4" />
-            {actionLabel}
-          </Button>
-        </Link>
-      )}
-    </div>
-  );
-}
-
 export default function Dashboard() {
-  const { workflows, loading: wfLoading } = useWorkflows();
-  const { runs, loading: runsLoading } = useWorkflowRuns();
-  const { org, loading: orgLoading } = useOrg();
+  const { workflows, loading: wfLoading, refetch: refetchWorkflows } = useWorkflows();
+  const { runs, loading: runsLoading, refetch: refetchRuns } = useWorkflowRuns();
+  const { org, loading: orgLoading, refetch: refetchOrg } = useOrg();
+  const { integrations } = useIntegrations();
+  const { profile } = useAuth();
+  const [runningTestId, setRunningTestId] = useState<string | null>(null);
 
-  const activeCount = workflows.filter((w) => w.status === "active").length;
+  const activeWorkflows = workflows.filter((w) => w.status === "active");
+  const activeCount = activeWorkflows.length;
   const creditBalance = org?.credit_balance ?? 0;
   const creditLimit = org?.monthly_credit_limit ?? 500;
+  const connectedCount = integrations.filter((i) => i.status === "connected").length;
 
-  const avgSuccessRate = workflows.length > 0
-    ? (workflows.reduce((sum, w) => sum + w.success_rate, 0) / workflows.length).toFixed(1)
-    : "0.0";
+  const successRuns = runs.filter((r) => r.status === "success").length;
+  const avgSuccessRate = runs.length > 0
+    ? ((successRuns / runs.length) * 100).toFixed(1)
+    : "\u2014";
 
   const runSparkline = runs.length > 1
     ? runs.slice(0, 12).map((r) => r.credits_consumed).reverse()
@@ -64,8 +56,8 @@ export default function Dashboard() {
 
   const metrics = [
     { label: "Active Workflows", value: String(activeCount), trend: activeCount > 0 ? `+${activeCount}` : undefined, icon: Activity },
-    { label: "Runs Today", value: String(runs.length), sparkline: runSparkline, icon: Zap },
-    { label: "Success Rate", value: `${avgSuccessRate}%`, icon: CheckCircle },
+    { label: "Total Runs", value: String(runs.length), sparkline: runSparkline, icon: Zap },
+    { label: "Success Rate", value: avgSuccessRate === "\u2014" ? "\u2014" : `${avgSuccessRate}%`, icon: CheckCircle },
     { label: "Credits Remaining", value: creditBalance.toLocaleString(), total: creditLimit, remaining: creditBalance, icon: Coins },
   ];
 
@@ -73,9 +65,37 @@ export default function Dashboard() {
   const chartData = runs.length > 0 ? buildChartData(runs) : [];
   const getWorkflowName = (wfId: string) => workflows.find((w) => w.id === wfId)?.name ?? "Unknown Workflow";
 
+  const isNewUser = workflows.length === 0 && runs.length === 0;
+  const hasWorkflowsNoRuns = workflows.length > 0 && runs.length === 0;
+
+  const onTestRun = async (workflow: Workflow) => {
+    if (!org || runningTestId) return;
+    setRunningTestId(workflow.id);
+    await handleTestRun({
+      workflow,
+      orgId: org.id,
+      onComplete: () => {
+        refetchOrg();
+        refetchRuns();
+        refetchWorkflows();
+        setRunningTestId(null);
+      },
+    });
+  };
+
+  // Getting started checklist for new users
+  const gettingStarted = [
+    { label: "Connect your tools", done: connectedCount > 0, detail: connectedCount > 0 ? `${connectedCount} connected` : "Not started", href: "/dashboard/integrations" },
+    { label: "Create your first workflow", done: workflows.length > 0, detail: workflows.length > 0 ? `${workflows.length} created` : "Not started", href: "/dashboard/workflows/new" },
+    { label: "Run a test execution", done: runs.length > 0, detail: runs.length > 0 ? `${runs.length} runs` : "Not started", href: undefined },
+    { label: "Explore analytics", done: runs.length >= 5, detail: runs.length >= 5 ? "Unlocked" : "Unlocked after first run", href: runs.length > 0 ? "/dashboard/analytics" : undefined },
+  ];
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+      <h1 className="text-2xl font-bold text-foreground">
+        {profile?.full_name ? `Welcome back, ${profile.full_name.split(" ")[0]}!` : "Dashboard"}
+      </h1>
 
       {/* Metric Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -101,9 +121,9 @@ export default function Dashboard() {
                 </div>
                 {m.total !== undefined && (
                   <div className="mt-3">
-                    <Progress value={m.total > 0 ? (m.remaining! / m.total) * 100 : 0} className="h-1.5 bg-secondary [&>div]:bg-warning" />
+                    <Progress value={m.total > 0 ? (m.remaining! / m.total) * 100 : 0} className={`h-1.5 bg-secondary [&>div]:${creditBalance < 100 ? "bg-destructive" : creditBalance < 500 ? "bg-warning" : "bg-primary"}`} />
                     <p className="mt-1 text-xs text-muted-foreground">
-                      <span className="font-mono text-warning">{m.remaining!.toLocaleString()}</span> / {m.total.toLocaleString()}
+                      <span className={`font-mono ${creditBalance < 100 ? "text-destructive" : creditBalance < 500 ? "text-warning" : "text-primary"}`}>{m.remaining!.toLocaleString()}</span> / {m.total.toLocaleString()}
                     </p>
                   </div>
                 )}
@@ -113,10 +133,105 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Chart */}
-      {chartData.length > 0 ? (
+      {/* Quick Actions */}
+      {!loading && (
+        <div className="flex flex-wrap gap-3">
+          <Link to="/dashboard/workflows/new">
+            <Button size="sm" className="gradient-primary text-primary-foreground">
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              New Workflow
+            </Button>
+          </Link>
+          {activeWorkflows.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-border"
+              disabled={!!runningTestId}
+              onClick={() => onTestRun(activeWorkflows[0])}
+            >
+              <Play className="mr-1.5 h-3.5 w-3.5" />
+              {runningTestId ? "Running..." : `Run "${activeWorkflows[0].name.slice(0, 20)}"`}
+            </Button>
+          )}
+          <Link to="/dashboard/integrations">
+            <Button size="sm" variant="outline" className="border-border">
+              <Plug className="mr-1.5 h-3.5 w-3.5" />
+              Connect Tool
+            </Button>
+          </Link>
+          <Link to="/dashboard/settings">
+            <Button size="sm" variant="outline" className="border-border">
+              <CreditCard className="mr-1.5 h-3.5 w-3.5" />
+              Buy Credits
+            </Button>
+          </Link>
+        </div>
+      )}
+
+      {/* NEW USER: Getting Started Checklist */}
+      {!loading && isNewUser && (
         <div className="surface-card p-6">
-          <h2 className="mb-4 text-sm font-semibold text-foreground">Workflow Executions (30 Days)</h2>
+          <h2 className="text-sm font-semibold text-foreground mb-4">Getting Started</h2>
+          <div className="space-y-3">
+            {gettingStarted.map((item, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                  item.done ? "bg-primary/20 text-primary" : "border border-border text-muted-foreground"
+                }`}>
+                  {item.done ? <Check className="h-3.5 w-3.5" /> : i + 1}
+                </div>
+                <div className="flex-1">
+                  <span className={`text-sm font-medium ${item.done ? "text-foreground" : "text-muted-foreground"}`}>{item.label}</span>
+                </div>
+                <span className={`text-xs ${item.done ? "text-primary" : "text-muted-foreground"}`}>{item.detail}</span>
+                {item.href && !item.done && (
+                  <Link to={item.href}>
+                    <Button size="sm" variant="ghost" className="h-7 text-xs text-primary">Go</Button>
+                  </Link>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* HAS WORKFLOWS BUT NO RUNS: Prompt to test */}
+      {!loading && hasWorkflowsNoRuns && (
+        <div className="surface-card p-6 text-center">
+          <div className="mb-3 flex justify-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+              <Play className="h-6 w-6 text-primary" />
+            </div>
+          </div>
+          <h3 className="text-lg font-semibold text-foreground">Your workflows are ready!</h3>
+          <p className="mt-2 text-sm text-muted-foreground">Run a test to see analytics and validate your automation.</p>
+          <div className="mt-4 flex items-center justify-center gap-3">
+            {activeWorkflows.slice(0, 2).map((wf) => (
+              <Button
+                key={wf.id}
+                className="gradient-primary text-primary-foreground"
+                disabled={!!runningTestId}
+                onClick={() => onTestRun(wf)}
+              >
+                <Play className="mr-2 h-4 w-4" />
+                {runningTestId === wf.id ? "Running..." : `Test "${wf.name.slice(0, 25)}"`}
+              </Button>
+            ))}
+            <Link to="/dashboard/workflows/new">
+              <Button variant="outline" className="border-border">
+                <Plus className="mr-2 h-4 w-4" />
+                Create Another
+              </Button>
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* ACTIVE USER: Chart + Runs Table */}
+      {chartData.length > 0 && (
+        <div className="surface-card p-6">
+          <h2 className="mb-4 text-sm font-semibold text-foreground">Workflow Executions</h2>
           <ResponsiveContainer width="100%" height={280}>
             <AreaChart data={chartData}>
               <defs>
@@ -138,17 +253,10 @@ export default function Dashboard() {
             </AreaChart>
           </ResponsiveContainer>
         </div>
-      ) : !loading ? (
-        <EmptyState
-          title="No execution data yet"
-          description="Deploy your first workflow to see execution charts and analytics here."
-          actionLabel="Create Workflow"
-          actionHref="/dashboard/workflows/new"
-        />
-      ) : null}
+      )}
 
       {/* Recent Runs Table */}
-      {runs.length > 0 ? (
+      {runs.length > 0 && (
         <div className="surface-card">
           <div className="border-b border-border px-6 py-4">
             <h2 className="text-sm font-semibold text-foreground">Recent Workflow Runs</h2>
@@ -169,24 +277,47 @@ export default function Dashboard() {
                     <td className="px-6 py-3 font-medium text-foreground">{getWorkflowName(run.workflow_id)}</td>
                     <td className="px-6 py-3"><StatusBadge status={run.status} /></td>
                     <td className="px-6 py-3 font-mono text-warning">{run.credits_consumed}</td>
-                    <td className="px-6 py-3 text-muted-foreground">{new Date(run.started_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
+                    <td className="px-6 py-3 text-muted-foreground text-xs">{timeAgo(run.started_at)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <div className="flex items-center justify-between border-t border-border px-6 py-3">
-            <span className="text-xs text-muted-foreground">Showing {Math.min(8, runs.length)} runs</span>
+        </div>
+      )}
+
+      {/* AI Recommendations */}
+      {runs.length >= 5 && workflows.length > 0 && (
+        <div>
+          <h2 className="mb-4 text-sm font-semibold text-foreground">AI Recommendations</h2>
+          <div className="grid gap-4 md:grid-cols-3">
+            {generateRecommendations(workflows, runs).map((rec, i) => (
+              <div key={i} className="surface-card p-5">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-sm font-medium text-foreground">{rec.workflow}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${rec.impact === "Critical" ? "badge-failed" : rec.impact === "High" ? "badge-approval" : "badge-running"}`}>
+                    {rec.impact}
+                  </span>
+                </div>
+                <p className="mb-3 text-xs text-muted-foreground leading-relaxed">{rec.issue}</p>
+                <div className="flex items-start gap-2 rounded-lg bg-background p-3">
+                  <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+                  <p className="text-xs text-secondary">{rec.fix}</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-      ) : !loading ? (
-        <EmptyState
-          title="No workflow runs yet"
-          description="Your recent workflow executions will appear here once you deploy and run a workflow."
-          actionLabel="Create Workflow"
-          actionHref="/dashboard/workflows/new"
-        />
-      ) : null}
+      )}
+
+      {runs.length > 0 && runs.length < 5 && (
+        <div className="surface-card border-l-2 border-l-warning p-4">
+          <div className="flex items-start gap-2">
+            <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+            <p className="text-sm text-secondary">Run more workflows to unlock AI-powered optimization recommendations.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -202,4 +333,30 @@ function buildChartData(runs: { status: string; started_at: string }[]) {
   return Object.entries(buckets)
     .map(([date, counts]) => ({ date, ...counts }))
     .slice(-30);
+}
+
+function generateRecommendations(workflows: Workflow[], runs: { status: string; workflow_id: string; credits_consumed: number }[]) {
+  const recs: { workflow: string; issue: string; fix: string; impact: string }[] = [];
+  for (const wf of workflows) {
+    const wfRuns = runs.filter((r) => r.workflow_id === wf.id);
+    const failCount = wfRuns.filter((r) => r.status === "failed").length;
+    if (wfRuns.length > 0 && failCount / wfRuns.length > 0.3) {
+      recs.push({
+        workflow: wf.name,
+        issue: `Failure rate is ${Math.round((failCount / wfRuns.length) * 100)}% over ${wfRuns.length} runs`,
+        fix: "Add retry logic or check integration credentials for failing steps.",
+        impact: failCount / wfRuns.length > 0.5 ? "Critical" : "High",
+      });
+    }
+  }
+  const bestWf = workflows.reduce((b, w) => w.success_rate > (b?.success_rate ?? 0) ? w : b, workflows[0]);
+  if (bestWf && bestWf.success_rate > 90 && recs.length < 3) {
+    recs.push({
+      workflow: bestWf.name,
+      issue: `${bestWf.success_rate}% success rate \u2014 top performing workflow`,
+      fix: "Consider using this as a template for similar automation patterns.",
+      impact: "Medium",
+    });
+  }
+  return recs.slice(0, 3);
 }

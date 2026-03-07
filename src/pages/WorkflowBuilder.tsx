@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Zap, Shield, AlertTriangle } from "lucide-react";
+import { Zap, Shield, AlertTriangle, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrg } from "@/hooks/useOrg";
 import { generateWorkflow } from "@/lib/n8n";
@@ -9,6 +9,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { AgentPlan } from "@/types/database";
 import { platformIcons } from "@/types/database";
+
+const examplePrompts = [
+  "When a deal closes in HubSpot, create a Salesforce account and notify Slack",
+  "Every morning, pull Jira sprint data and post a summary to Slack",
+  "When a GitHub PR is merged, update Asana task and notify the team",
+  "Sync new Google Calendar events to Notion and send a Slack reminder",
+];
 
 const fallbackSteps = [
   { platform: "hubspot", action: "Trigger: Deal stage moves to 'Closed Won'", estimated_credits: 1, require_approval: false, step_number: 1 },
@@ -96,7 +103,6 @@ export default function WorkflowBuilder() {
       });
       if (creditError) {
         console.error("Credit deduction failed:", creditError);
-        // Workflow was still created, just log the credit error
       }
 
       refetchOrg();
@@ -133,6 +139,26 @@ export default function WorkflowBuilder() {
               className="min-h-[180px] w-full resize-none rounded-lg border border-border bg-background p-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
+
+          {/* Example Prompts */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>Try an example:</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {examplePrompts.map((ex) => (
+                <button
+                  key={ex}
+                  onClick={() => setPrompt(ex)}
+                  className="rounded-lg border border-border bg-background px-3 py-2 text-left text-xs text-secondary transition-colors hover:border-primary/40 hover:text-foreground"
+                >
+                  {ex}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <Button
             onClick={handleGenerate}
             disabled={!prompt.trim() || loading}

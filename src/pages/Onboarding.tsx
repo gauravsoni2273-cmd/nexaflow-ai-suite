@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { platformIcons } from "@/types/database";
 
-const steps = [
+const stepsMeta = [
   { label: "Profile", icon: User },
   { label: "Workspace", icon: Building2 },
   { label: "Integrations", icon: Plug },
@@ -22,11 +22,13 @@ export default function Onboarding() {
   const [fullName, setFullName] = useState("");
   const [workspaceName, setWorkspaceName] = useState("");
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const completingRef = useRef(false);
   const { user, profile } = useAuth();
   const navigate = useNavigate();
 
   const handleNext = () => {
+    if (completingRef.current) return;
     if (step === 0 && !fullName.trim()) {
       toast.error("Please enter your name");
       return;
@@ -38,11 +40,12 @@ export default function Onboarding() {
     if (step < 2) {
       setStep(step + 1);
     } else {
-      handleComplete();
+      handleCompleteSetup();
     }
   };
 
   const togglePlatform = (platform: string) => {
+    if (completingRef.current) return;
     setSelectedPlatforms((prev) =>
       prev.includes(platform)
         ? prev.filter((p) => p !== platform)
@@ -50,20 +53,22 @@ export default function Onboarding() {
     );
   };
 
-  const handleComplete = async () => {
+  const handleCompleteSetup = async () => {
     if (!user || !profile) return;
-    setSaving(true);
+    completingRef.current = true;
+    setIsCompleting(true);
+
     try {
-      // Update user profile name
+      // 1. Update user profile name
       await supabase.auth.updateUser({ data: { full_name: fullName } });
       await supabase.from("users").update({ full_name: fullName }).eq("id", user.id);
 
-      // Update organization name
+      // 2. Update organization name
       if (profile.org_id) {
         await supabase.from("organizations").update({ name: workspaceName }).eq("id", profile.org_id);
       }
 
-      // Create selected integrations
+      // 3. Insert selected integrations
       if (selectedPlatforms.length > 0 && profile.org_id) {
         const inserts = selectedPlatforms.map((platform) => ({
           org_id: profile.org_id,
@@ -74,17 +79,34 @@ export default function Onboarding() {
         await supabase.from("integrations").insert(inserts);
       }
 
-      // Mark onboarding as completed
-      await supabase.from("users").update({ onboarding_completed: true }).eq("id", user.id);
+      // 4. Mark onboarding as complete
+      await supabase
+        .from("users")
+        .update({ onboarding_completed: true })
+        .eq("id", user.id);
 
+      // 5. Navigate to dashboard
       toast.success("Welcome to NexaFlow!");
       navigate("/dashboard", { replace: true });
-    } catch {
-      toast.error("Something went wrong. Please try again.");
-    } finally {
-      setSaving(false);
+    } catch (error) {
+      console.error("Onboarding error:", error);
+      toast.error("Setup failed. Please try again.");
+      completingRef.current = false;
+      setIsCompleting(false);
     }
   };
+
+  // Show loading screen while completing to prevent re-render state resets
+  if (isCompleting) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-muted-foreground">Setting up your workspace...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
@@ -97,7 +119,7 @@ export default function Onboarding() {
 
         {/* Step Indicator */}
         <div className="mb-8 flex items-center justify-center gap-4">
-          {steps.map((s, i) => (
+          {stepsMeta.map((s, i) => (
             <div key={s.label} className="flex items-center gap-2">
               <div className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                 i === step
@@ -109,7 +131,7 @@ export default function Onboarding() {
                 {i < step ? <Check className="h-3 w-3" /> : <s.icon className="h-3 w-3" />}
                 {s.label}
               </div>
-              {i < steps.length - 1 && <div className={`h-px w-8 ${i < step ? "bg-primary" : "bg-border"}`} />}
+              {i < stepsMeta.length - 1 && <div className={`h-px w-8 ${i < step ? "bg-primary" : "bg-border"}`} />}
             </div>
           ))}
         </div>
@@ -197,15 +219,9 @@ export default function Onboarding() {
             )}
             <Button
               onClick={handleNext}
-              disabled={saving}
               className="gradient-primary text-primary-foreground px-6"
             >
-              {saving ? (
-                <div className="flex items-center gap-2">
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                  Setting up...
-                </div>
-              ) : step === 2 ? (
+              {step === 2 ? (
                 <>
                   {selectedPlatforms.length > 0 ? "Complete Setup" : "Skip & Finish"}
                   <ArrowRight className="ml-2 h-4 w-4" />

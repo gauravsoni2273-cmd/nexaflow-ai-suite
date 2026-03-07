@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useIntegrations } from "@/hooks/useIntegrations";
 import { timeAgo } from "@/lib/helpers";
@@ -6,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { IntegrationConnectModal, IntegrationDisconnectModal } from "@/components/IntegrationConnectModal";
 
 const availablePlatforms = ["slack", "salesforce", "hubspot", "jira", "google_workspace", "asana", "notion", "github"];
 
@@ -18,6 +20,9 @@ function StatusBadge({ status }: { status: string }) {
 export default function Integrations() {
   const { integrations, loading, refetch } = useIntegrations();
   const { profile } = useAuth();
+  const [connectPlatform, setConnectPlatform] = useState<string | null>(null);
+  const [disconnectPlatform, setDisconnectPlatform] = useState<string | null>(null);
+  const [disconnectId, setDisconnectId] = useState<string | null>(null);
 
   const displayIntegrations = availablePlatforms.map((platform) => {
     const existing = integrations.find((i) => i.platform === platform);
@@ -124,9 +129,14 @@ export default function Integrations() {
                 }`}
                 variant={isConnected ? "outline" : "default"}
                 onClick={() => {
-                  if (isConnected) handleDisconnect(int.id, int.platform);
-                  else if (isError) handleReconnect(int.id, int.platform);
-                  else handleConnect(int.platform);
+                  if (isConnected) {
+                    setDisconnectPlatform(int.platform);
+                    setDisconnectId(int.id);
+                  } else if (isError) {
+                    handleReconnect(int.id, int.platform);
+                  } else {
+                    setConnectPlatform(int.platform);
+                  }
                 }}
               >
                 {isConnected ? "Disconnect" : isError ? "Reconnect" : "Connect"}
@@ -135,6 +145,21 @@ export default function Integrations() {
           );
         })}
       </div>
+
+      {/* Connect Modal */}
+      <IntegrationConnectModal
+        platform={connectPlatform}
+        onClose={() => setConnectPlatform(null)}
+        onConnect={handleConnect}
+      />
+
+      {/* Disconnect Modal */}
+      <IntegrationDisconnectModal
+        platform={disconnectPlatform}
+        integrationId={disconnectId}
+        onClose={() => { setDisconnectPlatform(null); setDisconnectId(null); }}
+        onDisconnect={handleDisconnect}
+      />
     </div>
   );
 }

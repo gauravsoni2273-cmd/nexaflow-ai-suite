@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Plus, Pause, Play, Trash2, Eye, GitBranch } from "lucide-react";
+import { Plus, Pause, Play, Trash2, Eye, GitBranch, Loader2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useWorkflows } from "@/hooks/useWorkflows";
+import { useWorkflowRuns } from "@/hooks/useWorkflowRuns";
+import { useOrg } from "@/hooks/useOrg";
 import { formatDuration } from "@/lib/helpers";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { handleTestRun } from "@/lib/testRun";
 import type { AgentPlan } from "@/types/database";
 import {
   Dialog,
@@ -39,9 +42,12 @@ function healthColor(score: number) {
 }
 
 export default function Workflows() {
-  const { workflows, loading, refetch } = useWorkflows();
+  const { workflows, loading, refetch: refetchWorkflows } = useWorkflows();
+  const { refetch: refetchRuns } = useWorkflowRuns();
+  const { org, refetch: refetchOrg } = useOrg();
   const [viewPlan, setViewPlan] = useState<AgentPlan | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [runningTestId, setRunningTestId] = useState<string | null>(null);
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === "active" ? "paused" : "active";
@@ -53,7 +59,7 @@ export default function Workflows() {
       toast.error("Failed to update workflow status");
     } else {
       toast.success(`Workflow ${newStatus === "active" ? "resumed" : "paused"}`);
-      refetch();
+      refetchWorkflows();
     }
   };
 
@@ -67,9 +73,24 @@ export default function Workflows() {
       toast.error("Failed to delete workflow");
     } else {
       toast.success("Workflow deleted");
-      refetch();
+      refetchWorkflows();
     }
     setDeleteId(null);
+  };
+
+  const onTestRun = async (workflow: typeof workflows[0]) => {
+    if (!org || runningTestId) return;
+    setRunningTestId(workflow.id);
+    await handleTestRun({
+      workflow,
+      orgId: org.id,
+      onComplete: () => {
+        refetchOrg();
+        refetchRuns();
+        refetchWorkflows();
+        setRunningTestId(null);
+      },
+    });
   };
 
   return (
@@ -120,6 +141,7 @@ export default function Workflows() {
             <tbody>
               {workflows.map((w) => {
                 const healthScore = Math.round(w.success_rate * 0.95);
+                const isRunning = runningTestId === w.id;
                 return (
                   <tr key={w.id} className="border-b border-border last:border-0 transition-colors hover:surface-hover">
                     <td className="px-6 py-4 font-medium text-foreground">{w.name}</td>
@@ -140,6 +162,19 @@ export default function Workflows() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-1">
+                        {/* Test Run */}
+                        {w.status === "active" && w.agent_plan_json && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-primary hover:text-primary/80"
+                            onClick={() => onTestRun(w)}
+                            disabled={!!runningTestId}
+                            title="Run test"
+                          >
+                            {isRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                          </Button>
+                        )}
                         {w.agent_plan_json && (
                           <Button
                             size="sm"
