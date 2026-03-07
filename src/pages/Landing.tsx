@@ -6,23 +6,28 @@ import { useOrg } from "@/hooks/useOrg";
 import { openRazorpayCheckout } from "@/lib/razorpay";
 import { toast } from "sonner";
 
-const workflowSteps = [
-  { name: "Salesforce", emoji: "☁️" },
-  { name: "AI Agent", emoji: "🤖" },
-  { name: "Slack", emoji: "💬" },
-  { name: "Jira", emoji: "🔵" },
-  { name: "Calendar", emoji: "📅" },
-];
-
 const features = [
   { icon: Brain, title: "Agentic Orchestration", desc: "Deploy autonomous AI agents that reason, plan, and execute multi-step workflows across your entire tech stack." },
   { icon: BarChart3, title: "Workflow Intelligence", desc: "Real-time analytics and health scoring powered by ML. Predict failures before they happen." },
   { icon: Zap, title: "One-Click Integrations", desc: "Connect to 200+ enterprise tools in seconds. No code, no config, just results." },
 ];
 
+const howItWorks = [
+  { emoji: "\u270D\uFE0F", title: "Describe in English", desc: "Tell NexaFlow what you want automated. \"When a deal closes, notify the team and create follow-up tasks.\"" },
+  { emoji: "\uD83E\uDDE0", title: "AI Builds the Plan", desc: "Our AI agent analyzes your connected tools, figures out the steps, sets approval gates, and generates an execution plan." },
+  { emoji: "\u26A1", title: "Deploy & Monitor", desc: "One click to deploy. Track success rates, credit usage, and get AI-powered optimization suggestions." },
+];
+
+const exampleFlow = [
+  { label: "HubSpot deal closes", emoji: "\uD83D\uDFE0" },
+  { label: "Slack notification", emoji: "\uD83D\uDCAC" },
+  { label: "Salesforce record", emoji: "\u2601\uFE0F" },
+  { label: "Calendar kickoff", emoji: "\uD83D\uDCC5" },
+];
+
 const tiers = [
-  { name: "Free", price: "₹0", period: "/month", credits: "500 credits", features: ["5 workflows", "500 credits/month", "Basic analytics", "Email support"], cta: "Start Free", highlight: false },
-  { name: "Pro", price: "₹2,499", period: "/month", credits: "5,000 credits", features: ["Unlimited workflows", "5,000 credits/month", "Advanced analytics", "Priority support", "Custom integrations", "Team collaboration"], cta: "Start Pro Trial", highlight: true },
+  { name: "Free", price: "\u20B90", period: "/month", credits: "500 credits", features: ["5 workflows", "500 credits/month", "Basic analytics", "Email support"], cta: "Start Free", highlight: false },
+  { name: "Pro", price: "\u20B92,499", period: "/month", credits: "5,000 credits", features: ["Unlimited workflows", "5,000 credits/month", "Advanced analytics", "Priority support", "Custom integrations", "Team collaboration"], cta: "Start Pro Trial", highlight: true },
   { name: "Enterprise", price: "Custom", period: "", credits: "Unlimited", features: ["Everything in Pro", "Unlimited credits", "SLA guarantee", "Dedicated CSM", "SSO & SAML", "On-premise option"], cta: "Contact Sales", highlight: false },
 ];
 
@@ -31,9 +36,14 @@ export default function Landing() {
   const { org, refetch: refetchOrg } = useOrg();
   const navigate = useNavigate();
 
+  const scrollToSection = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const handleProCta = () => {
     if (!user) {
-      navigate("/login");
+      navigate("/signup");
       return;
     }
     openRazorpayCheckout({
@@ -47,8 +57,19 @@ export default function Landing() {
     });
   };
 
+  const handlePricingCta = (tierName: string) => {
+    if (tierName === "Free") {
+      navigate("/signup");
+    } else if (tierName === "Pro") {
+      handleProCta();
+    } else if (tierName === "Enterprise") {
+      toast.info("Contact us at sales@nexaflow.ai for Enterprise pricing.");
+      window.location.href = "mailto:sales@nexaflow.ai";
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-background page-transition">
+    <div id="top" className="min-h-screen bg-background page-transition">
       {/* Nav */}
       <nav className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
@@ -57,9 +78,9 @@ export default function Landing() {
             <span className="text-lg font-bold text-foreground">NexaFlow</span>
           </div>
           <div className="hidden items-center gap-8 md:flex">
-            <a href="#features" className="text-sm text-secondary hover:text-foreground transition-colors">Product</a>
-            <a href="#pricing" className="text-sm text-secondary hover:text-foreground transition-colors">Pricing</a>
-            <a href="#" className="text-sm text-secondary hover:text-foreground transition-colors">Docs</a>
+            <button onClick={() => scrollToSection("product")} className="text-sm text-secondary hover:text-foreground transition-colors">Product</button>
+            <button onClick={() => scrollToSection("pricing")} className="text-sm text-secondary hover:text-foreground transition-colors">Pricing</button>
+            <button onClick={() => scrollToSection("top")} className="text-sm text-secondary hover:text-foreground transition-colors">Docs</button>
           </div>
           <Link to="/dashboard">
             <Button size="sm" className="gradient-primary text-primary-foreground">
@@ -97,27 +118,49 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Workflow Visualization */}
-      <section className="py-12">
-        <div className="mx-auto max-w-5xl px-6">
-          <div className="flex items-center justify-center gap-2 overflow-x-auto pb-4">
-            {workflowSteps.map((step, i) => (
-              <div key={step.name} className="flex items-center gap-2 shrink-0">
-                <div className="surface-card flex flex-col items-center gap-2 px-6 py-4 min-w-[100px]">
-                  <span className="text-2xl">{step.emoji}</span>
-                  <span className="text-xs font-medium text-foreground">{step.name}</span>
+      {/* How It Works */}
+      <section id="product" className="py-20">
+        <div className="mx-auto max-w-6xl px-6">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold text-foreground">How NexaFlow Works</h2>
+            <p className="mt-3 text-secondary">Three steps to automate any cross-platform workflow</p>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-3">
+            {howItWorks.map((step, i) => (
+              <div key={step.title} className="surface-card p-6 text-center">
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-3xl">
+                  {step.emoji}
                 </div>
-                {i < workflowSteps.length - 1 && (
-                  <ArrowRight className="h-4 w-4 text-primary shrink-0" />
-                )}
+                <div className="mb-2 text-xs font-semibold text-primary tracking-widest uppercase">Step {i + 1}</div>
+                <h3 className="mb-2 text-lg font-semibold text-foreground">{step.title}</h3>
+                <p className="text-sm leading-relaxed text-secondary">{step.desc}</p>
               </div>
             ))}
+          </div>
+
+          {/* Example flow */}
+          <div className="mt-10 surface-card p-6">
+            <p className="mb-4 text-center text-sm font-medium text-muted-foreground">Example workflow</p>
+            <div className="flex items-center justify-center gap-2 flex-wrap">
+              {exampleFlow.map((item, i) => (
+                <div key={item.label} className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 rounded-full border border-border bg-background px-4 py-2">
+                    <span className="text-base">{item.emoji}</span>
+                    <span className="text-xs font-medium text-foreground whitespace-nowrap">{item.label}</span>
+                  </div>
+                  {i < exampleFlow.length - 1 && (
+                    <ArrowRight className="h-3.5 w-3.5 text-primary shrink-0" />
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
 
       {/* Features */}
-      <section id="features" className="py-20">
+      <section className="py-20">
         <div className="mx-auto max-w-6xl px-6">
           <div className="grid gap-6 md:grid-cols-3">
             {features.map((f) => (
@@ -169,7 +212,7 @@ export default function Landing() {
                       : "border-border"
                   }`}
                   variant={t.highlight ? "default" : "outline"}
-                  onClick={t.name === "Pro" ? handleProCta : undefined}
+                  onClick={() => handlePricingCta(t.name)}
                 >
                   {t.cta}
                 </Button>
@@ -187,12 +230,12 @@ export default function Landing() {
             <span className="text-sm font-semibold text-foreground">NexaFlow</span>
           </div>
           <div className="flex gap-6">
-            <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Privacy</a>
-            <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Terms</a>
-            <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Docs</a>
-            <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Status</a>
+            <button onClick={() => scrollToSection("top")} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Privacy</button>
+            <button onClick={() => scrollToSection("top")} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Terms</button>
+            <button onClick={() => scrollToSection("top")} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Docs</button>
+            <button onClick={() => scrollToSection("top")} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Status</button>
           </div>
-          <p className="text-xs text-muted-foreground">© 2026 NexaFlow. All rights reserved.</p>
+          <p className="text-xs text-muted-foreground">&copy; 2026 NexaFlow. All rights reserved.</p>
         </div>
       </footer>
     </div>
