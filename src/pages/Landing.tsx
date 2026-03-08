@@ -138,9 +138,9 @@ export default function Landing() {
             <span className="text-lg font-bold text-[#E8EAF0]">NexaFlow</span>
           </div>
           <div className="hidden items-center gap-8 md:flex">
-            <button onClick={() => scrollToSection("product")} className="text-sm text-[#8B92A8] hover:text-[#E8EAF0] transition-colors font-medium">Product</button>
+            <button onClick={() => scrollToSection("features")} className="text-sm text-[#8B92A8] hover:text-[#E8EAF0] transition-colors font-medium">Product</button>
             <button onClick={() => scrollToSection("pricing")} className="text-sm text-[#8B92A8] hover:text-[#E8EAF0] transition-colors font-medium">Pricing</button>
-            <button onClick={() => scrollToSection("product")} className="text-sm text-[#8B92A8] hover:text-[#E8EAF0] transition-colors font-medium">Docs</button>
+            <button onClick={() => scrollToSection("how-it-works")} className="text-sm text-[#8B92A8] hover:text-[#E8EAF0] transition-colors font-medium">Docs</button>
           </div>
           <Link to="/dashboard">
             <button className="px-5 py-2 bg-[#00E5CC] text-[#0B0F1A] font-bold text-sm rounded-lg hover:shadow-[0_0_30px_rgba(0,229,204,0.3)] transition-all duration-300">
@@ -203,7 +203,7 @@ export default function Landing() {
             Start Free →
           </button>
           <button
-            onClick={() => scrollToSection("product")}
+            onClick={() => scrollToSection("how-it-works")}
             className="px-8 py-3.5 border border-[#2A3050] text-[#B8BED9] font-semibold rounded-xl hover:border-[#00E5CC]/50 transition-all duration-300"
           >
             See How It Works
@@ -212,7 +212,7 @@ export default function Landing() {
       </section>
 
       {/* How It Works */}
-      <section id="product" className="py-24 px-6 md:px-12 relative">
+      <section id="how-it-works" className="py-24 px-6 md:px-12 relative">
         <motion.h2
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -259,7 +259,7 @@ export default function Landing() {
       </section>
 
       {/* Features */}
-      <section className="py-20 px-6 md:px-12">
+      <section id="features" className="py-20 px-6 md:px-12">
         <div className="max-w-6xl mx-auto grid gap-6 md:grid-cols-3">
           {features.map((f, index) => (
             <motion.div
@@ -282,7 +282,7 @@ export default function Landing() {
       </section>
 
       {/* Pricing */}
-      <section id="pricing" className="py-20 px-6 md:px-12">
+      <section id="pricing" className="relative z-10 py-20 px-6 md:px-12">
         <div className="max-w-6xl mx-auto">
           <motion.h2
             initial={{ opacity: 0, y: 20 }}
