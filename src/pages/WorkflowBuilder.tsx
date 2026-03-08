@@ -70,7 +70,9 @@ export default function WorkflowBuilder() {
         nl_description: prompt,
       });
       setPlan(result);
-    } catch {
+    } catch (error) {
+      console.error("n8n webhook failed:", error);
+      toast.error("AI generation unavailable. Showing sample plan.");
       setPlan({
         workflow_name: prompt.slice(0, 50) || "New Workflow",
         trigger: { type: "webhook", description: "Event-based trigger" },
