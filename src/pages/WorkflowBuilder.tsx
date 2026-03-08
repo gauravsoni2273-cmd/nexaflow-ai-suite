@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Zap, Shield, Sparkles, X, CheckCircle2, AlertTriangle, Plug, Rocket } from "lucide-react";
+import { Zap, Shield, Sparkles, X, AlertTriangle, Plug, Rocket, ChevronDown } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrg } from "@/hooks/useOrg";
 import { useIntegrations } from "@/hooks/useIntegrations";
@@ -10,7 +10,7 @@ import { generateWorkflow } from "@/lib/n8n";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { openRazorpayCheckout } from "@/lib/razorpay";
-import type { AgentPlan } from "@/types/database";
+import type { AgentPlan, Integration } from "@/types/database";
 import { platformIcons } from "@/types/database";
 
 const DEPLOY_CREDIT_COST = 50;
@@ -48,12 +48,31 @@ export default function WorkflowBuilder() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showMissingIntegrations, setShowMissingIntegrations] = useState(false);
   const [missingPlatforms, setMissingPlatforms] = useState<string[]>([]);
+  const [selectedSheetId, setSelectedSheetId] = useState<string | null>(null);
+  const [selectedSlackId, setSelectedSlackId] = useState<string | null>(null);
+  const [sheetDropdownOpen, setSheetDropdownOpen] = useState(false);
+  const [slackDropdownOpen, setSlackDropdownOpen] = useState(false);
   const { user, profile } = useAuth();
   const { org, refetch: refetchOrg } = useOrg();
   const { integrations } = useIntegrations();
   const navigate = useNavigate();
 
   const creditBalance = org?.credit_balance ?? 0;
+
+  // Multi-connection helpers
+  const sheetsConnections = integrations.filter((i) => i.platform === "google_workspace" && i.status === "connected");
+  const slackConnections = integrations.filter((i) => i.platform === "slack" && i.status === "connected");
+
+  const parseIntegrationLabel = (int: Integration): string => {
+    if (!int.auth_token_enc) return int.platform;
+    try {
+      const data = JSON.parse(int.auth_token_enc);
+      if (data.channel_label) return data.channel_label;
+      if (data.spreadsheet_title) return `${data.spreadsheet_title} / ${data.sheet_name || "Sheet1"}`;
+      if (data.sheet_id) return `${data.sheet_id.slice(0, 12)}... / ${data.sheet_name || "Sheet1"}`;
+    } catch { /* legacy format */ }
+    return int.platform;
+  };
 
   // Generation step animation
   useEffect(() => {
@@ -200,6 +219,17 @@ export default function WorkflowBuilder() {
       return;
     }
 
+    // If multiple sheets/slack and user hasn't selected, auto-select first
+    const needsSheetPlatform = plan.steps.some((s) => s.platform === "google_workspace");
+    const needsSlackPlatform = plan.steps.some((s) => s.platform === "slack");
+
+    if (needsSheetPlatform && sheetsConnections.length > 1 && !selectedSheetId) {
+      setSelectedSheetId(sheetsConnections[0].id);
+    }
+    if (needsSlackPlatform && slackConnections.length > 1 && !selectedSlackId) {
+      setSelectedSlackId(slackConnections[0].id);
+    }
+
     setDeploying(true);
     try {
       const triggerType = determineTriggerType(plan);
@@ -208,26 +238,37 @@ export default function WorkflowBuilder() {
       const metadata: Record<string, unknown> = { ...plan as unknown as Record<string, unknown> };
 
       // Add Google Sheets metadata if relevant
-      if (triggerType === "google_sheets_new_row") {
-        const gsIntegration = integrations.find(
-          (i) => i.platform === "google_workspace" && i.status === "connected" && i.auth_token_enc
-        );
-        if (gsIntegration?.auth_token_enc) {
+      if (needsSheetPlatform && sheetsConnections.length > 0) {
+        const chosenSheet = selectedSheetId
+          ? sheetsConnections.find((i) => i.id === selectedSheetId) ?? sheetsConnections[0]
+          : sheetsConnections[0];
+        if (chosenSheet.auth_token_enc) {
           try {
-            const gsData = JSON.parse(gsIntegration.auth_token_enc);
+            const gsData = JSON.parse(chosenSheet.auth_token_enc);
             metadata.sheet_id = gsData.sheet_id;
             metadata.sheet_name = gsData.sheet_name;
-            metadata.last_row_count = 0;
+            metadata.spreadsheet_title = gsData.spreadsheet_title;
+            metadata.integration_id = chosenSheet.id;
+            if (triggerType === "google_sheets_new_row") {
+              metadata.last_row_count = 0;
+            }
           } catch { /* ignore parse errors */ }
         }
       }
 
       // Add Slack webhook reference if relevant
-      const slackIntegration = integrations.find(
-        (i) => i.platform === "slack" && i.status === "connected"
-      );
-      if (slackIntegration) {
+      if (needsSlackPlatform && slackConnections.length > 0) {
+        const chosenSlack = selectedSlackId
+          ? slackConnections.find((i) => i.id === selectedSlackId) ?? slackConnections[0]
+          : slackConnections[0];
         metadata.slack_connected = true;
+        metadata.slack_integration_id = chosenSlack.id;
+        if (chosenSlack.auth_token_enc) {
+          try {
+            const slackData = JSON.parse(chosenSlack.auth_token_enc);
+            metadata.slack_channel_label = slackData.channel_label;
+          } catch { /* legacy format */ }
+        }
       }
 
       const { error: wfError } = await supabase.from("workflows").insert({
@@ -264,6 +305,8 @@ export default function WorkflowBuilder() {
     setPrompt("");
     setDeployed(false);
     setIsDemoMode(false);
+    setSelectedSheetId(null);
+    setSelectedSlackId(null);
   };
 
   const handleUpgrade = () => {
@@ -505,6 +548,83 @@ export default function WorkflowBuilder() {
                 </div>
               </div>
             </div>
+
+            {/* Integration Selection Dropdowns */}
+            {plan && sheetsConnections.length > 1 && steps.some((s) => s.platform === "google_workspace") && (
+              <div className="surface-card p-4 space-y-2">
+                <label className="text-xs font-medium text-foreground">Which Google Sheet?</label>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => { setSheetDropdownOpen(!sheetDropdownOpen); setSlackDropdownOpen(false); }}
+                    className="flex w-full items-center justify-between rounded-md bg-[#0F1525] border border-[#1E2538] px-3 py-2 text-xs text-foreground hover:border-[#00E5CC]/30 transition-colors"
+                  >
+                    <span className="truncate">
+                      {selectedSheetId
+                        ? parseIntegrationLabel(sheetsConnections.find((i) => i.id === selectedSheetId) ?? sheetsConnections[0])
+                        : parseIntegrationLabel(sheetsConnections[0])}
+                    </span>
+                    <ChevronDown className={`h-3 w-3 shrink-0 ml-2 text-muted-foreground transition-transform ${sheetDropdownOpen ? "rotate-180" : ""}`} />
+                  </button>
+                  {sheetDropdownOpen && (
+                    <div className="absolute z-10 mt-1 w-full rounded-md bg-[#0F1525] border border-[#1E2538] py-1 shadow-lg max-h-32 overflow-y-auto">
+                      {sheetsConnections.map((int) => (
+                        <button
+                          key={int.id}
+                          type="button"
+                          onClick={() => { setSelectedSheetId(int.id); setSheetDropdownOpen(false); }}
+                          className={`flex w-full items-center px-3 py-1.5 text-xs transition-colors ${
+                            (selectedSheetId ?? sheetsConnections[0].id) === int.id
+                              ? "bg-primary/10 text-primary"
+                              : "text-foreground hover:bg-[#1E2538]"
+                          }`}
+                        >
+                          {parseIntegrationLabel(int)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {plan && slackConnections.length > 1 && steps.some((s) => s.platform === "slack") && (
+              <div className="surface-card p-4 space-y-2">
+                <label className="text-xs font-medium text-foreground">Which Slack channel?</label>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => { setSlackDropdownOpen(!slackDropdownOpen); setSheetDropdownOpen(false); }}
+                    className="flex w-full items-center justify-between rounded-md bg-[#0F1525] border border-[#1E2538] px-3 py-2 text-xs text-foreground hover:border-[#00E5CC]/30 transition-colors"
+                  >
+                    <span className="truncate">
+                      {selectedSlackId
+                        ? parseIntegrationLabel(slackConnections.find((i) => i.id === selectedSlackId) ?? slackConnections[0])
+                        : parseIntegrationLabel(slackConnections[0])}
+                    </span>
+                    <ChevronDown className={`h-3 w-3 shrink-0 ml-2 text-muted-foreground transition-transform ${slackDropdownOpen ? "rotate-180" : ""}`} />
+                  </button>
+                  {slackDropdownOpen && (
+                    <div className="absolute z-10 mt-1 w-full rounded-md bg-[#0F1525] border border-[#1E2538] py-1 shadow-lg max-h-32 overflow-y-auto">
+                      {slackConnections.map((int) => (
+                        <button
+                          key={int.id}
+                          type="button"
+                          onClick={() => { setSelectedSlackId(int.id); setSlackDropdownOpen(false); }}
+                          className={`flex w-full items-center px-3 py-1.5 text-xs transition-colors ${
+                            (selectedSlackId ?? slackConnections[0].id) === int.id
+                              ? "bg-primary/10 text-primary"
+                              : "text-foreground hover:bg-[#1E2538]"
+                          }`}
+                        >
+                          {parseIntegrationLabel(int)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {creditBalance < DEPLOY_CREDIT_COST && (
               <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3">

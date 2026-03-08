@@ -11,11 +11,12 @@ import { toast } from "sonner";
 interface SlackConnectModalProps {
   open: boolean;
   onClose: () => void;
-  onSave: (webhookUrl: string) => Promise<void>;
+  onSave: (webhookUrl: string, channelLabel: string) => Promise<void>;
 }
 
 function SlackConnectModal({ open, onClose, onSave }: SlackConnectModalProps) {
   const [webhookUrl, setWebhookUrl] = useState("");
+  const [channelLabel, setChannelLabel] = useState("");
   const [testing, setTesting] = useState(false);
   const [tested, setTested] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -48,15 +49,16 @@ function SlackConnectModal({ open, onClose, onSave }: SlackConnectModalProps) {
   };
 
   const handleSave = async () => {
-    if (!isValidUrl) return;
+    if (!isValidUrl || !channelLabel.trim()) return;
     setSaving(true);
-    await onSave(webhookUrl);
+    await onSave(webhookUrl, channelLabel.trim());
     setSaving(false);
     resetAndClose();
   };
 
   const resetAndClose = () => {
     setWebhookUrl("");
+    setChannelLabel("");
     setTesting(false);
     setTested(false);
     setSaving(false);
@@ -85,7 +87,7 @@ function SlackConnectModal({ open, onClose, onSave }: SlackConnectModalProps) {
 
             <div className="flex items-center gap-3 mb-5">
               <span className="text-2xl">{platformIcons.slack?.emoji}</span>
-              <h2 className="text-lg font-bold text-foreground">Connect Slack</h2>
+              <h2 className="text-lg font-bold text-foreground">Connect Slack Channel</h2>
             </div>
 
             <div className="space-y-4">
@@ -107,7 +109,18 @@ function SlackConnectModal({ open, onClose, onSave }: SlackConnectModalProps) {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-foreground">Paste your Slack Webhook URL</label>
+                <label className="text-xs font-medium text-foreground">Channel Label</label>
+                <Input
+                  value={channelLabel}
+                  onChange={(e) => setChannelLabel(e.target.value)}
+                  placeholder="#general, #alerts, #sales-wins..."
+                  className="bg-background border-border text-sm"
+                />
+                <p className="text-xs text-muted-foreground">A name to identify this channel in NexaFlow</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-foreground">Webhook URL</label>
                 <Input
                   value={webhookUrl}
                   onChange={(e) => { setWebhookUrl(e.target.value); setTested(false); }}
@@ -136,7 +149,7 @@ function SlackConnectModal({ open, onClose, onSave }: SlackConnectModalProps) {
                 <Button
                   className="flex-1 gradient-primary text-primary-foreground text-sm"
                   onClick={handleSave}
-                  disabled={!isValidUrl || saving}
+                  disabled={!isValidUrl || !channelLabel.trim() || saving}
                 >
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
                 </Button>
@@ -157,7 +170,7 @@ const FETCH_TABS_URL = "https://n8n-production-d298.up.railway.app/webhook/fetch
 interface GoogleSheetsConnectModalProps {
   open: boolean;
   onClose: () => void;
-  onSave: (sheetId: string, sheetName: string) => Promise<void>;
+  onSave: (sheetId: string, sheetName: string, spreadsheetTitle: string | null) => Promise<void>;
   orgId: string;
 }
 
@@ -276,7 +289,7 @@ function GoogleSheetsConnectModal({ open, onClose, onSave, orgId }: GoogleSheets
   const handleSave = async () => {
     if (!isValidId) return;
     setSaving(true);
-    await onSave(sheetId, sheetName);
+    await onSave(sheetId, sheetName, spreadsheetTitle);
     setSaving(false);
     resetAndClose();
   };
@@ -316,7 +329,7 @@ function GoogleSheetsConnectModal({ open, onClose, onSave, orgId }: GoogleSheets
 
             <div className="flex items-center gap-3 mb-5">
               <span className="text-2xl">{platformIcons.google_workspace?.emoji}</span>
-              <h2 className="text-lg font-bold text-foreground">Connect Google Sheets</h2>
+              <h2 className="text-lg font-bold text-foreground">Connect Google Sheet</h2>
             </div>
 
             <div className="space-y-4">
@@ -533,7 +546,7 @@ export function IntegrationDisconnectModal({ platform, integrationId, onClose, o
         >
           <h2 className="text-lg font-bold text-foreground mb-2">Disconnect {icon?.label ?? platform}?</h2>
           <p className="text-sm text-muted-foreground mb-5">
-            Workflows using {icon?.label ?? platform} may fail after disconnecting. You can reconnect at any time.
+            Workflows using this connection may fail after disconnecting. You can reconnect at any time.
           </p>
           <div className="flex gap-3">
             <Button variant="outline" className="flex-1 border-border" onClick={onClose}>Cancel</Button>
@@ -557,8 +570,8 @@ interface IntegrationConnectModalProps {
   platform: string | null;
   orgId: string;
   onClose: () => void;
-  onConnectSlack: (webhookUrl: string) => Promise<void>;
-  onConnectGoogleSheets: (sheetId: string, sheetName: string) => Promise<void>;
+  onConnectSlack: (webhookUrl: string, channelLabel: string) => Promise<void>;
+  onConnectGoogleSheets: (sheetId: string, sheetName: string, spreadsheetTitle: string | null) => Promise<void>;
 }
 
 export function IntegrationConnectModal({ platform, orgId, onClose, onConnectSlack, onConnectGoogleSheets }: IntegrationConnectModalProps) {
