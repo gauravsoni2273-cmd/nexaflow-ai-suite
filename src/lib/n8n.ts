@@ -45,12 +45,30 @@ export async function generateWorkflow(params: {
 
   // n8n returns { success, workflow_id, agent_plan, workflow_name }
   if (result.agent_plan) {
-    return result.agent_plan as AgentPlan;
+    const plan = result.agent_plan as AgentPlan;
+    // Ensure workflow_name is set (might be at wrapper level only)
+    if (!plan.workflow_name && result.workflow_name) {
+      plan.workflow_name = result.workflow_name;
+    }
+    console.log("Returning agent_plan:", JSON.stringify(plan, null, 2));
+    return plan;
   }
 
   // Fallback: if the response itself IS the plan (direct return)
   if (result.steps && result.workflow_name) {
     return result as AgentPlan;
+  }
+
+  // Last resort: check if response is an array (n8n sometimes wraps in array)
+  if (Array.isArray(result) && result.length > 0) {
+    const first = result[0];
+    if (first.agent_plan) {
+      const plan = first.agent_plan as AgentPlan;
+      if (!plan.workflow_name && first.workflow_name) {
+        plan.workflow_name = first.workflow_name;
+      }
+      return plan;
+    }
   }
 
   throw new Error("Unexpected response format from n8n webhook");
