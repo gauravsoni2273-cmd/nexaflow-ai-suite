@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Brain, BarChart3, Zap, Check, ArrowRight } from "lucide-react";
+import { Brain, BarChart3, Zap, Check, ArrowRight, PenLine, Sparkles, Rocket } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrg } from "@/hooks/useOrg";
 import { openRazorpayCheckout } from "@/lib/razorpay";
@@ -13,27 +13,24 @@ const features = [
   { icon: Zap, title: "One-Click Integrations", desc: "Connect to 200+ enterprise tools in seconds. No code, no config, just results." },
 ];
 
-const howItWorksData = [
+const howItWorksSteps = [
   {
-    step: "01",
-    icon: "\u270D\uFE0F",
-    title: "Describe in English",
-    description: "Tell NexaFlow what you want automated in plain English. No coding, no flowcharts.",
-    example: "\"When a deal closes, notify the team and create follow-up tasks.\"",
+    step: 1,
+    icon: PenLine,
+    title: "Describe Your Workflow",
+    description: "Tell NexaFlow what you want to automate in plain English. No coding, no flowcharts.",
   },
   {
-    step: "02",
-    icon: "\uD83E\uDDE0",
-    title: "AI Builds the Plan",
-    description: "Our AI agent analyzes your tools, maps dependencies, sets approval gates, and generates an execution plan.",
-    example: "HubSpot \u2192 Slack \u2192 Salesforce \u2192 Calendar",
+    step: 2,
+    icon: Sparkles,
+    title: "AI Generates the Plan",
+    description: "Our agentic AI breaks down your request into executable steps across your connected tools.",
   },
   {
-    step: "03",
-    icon: "\u26A1",
+    step: 3,
+    icon: Rocket,
     title: "Deploy & Monitor",
-    description: "One click to deploy. Track success rates, credit usage, and get AI optimization suggestions.",
-    example: "94.7% success rate \u00B7 2.1s avg execution",
+    description: "One-click deploy your workflow. Track runs, success rates, and credits in real-time.",
   },
 ];
 
@@ -220,7 +217,7 @@ export default function Landing() {
           transition={{ duration: 0.5 }}
           className="text-3xl md:text-4xl font-bold text-center text-[#E8EAF0] mb-4"
         >
-          How NexaFlow Works
+          How It Works
         </motion.h2>
         <motion.p
           initial={{ opacity: 0 }}
@@ -229,32 +226,80 @@ export default function Landing() {
           transition={{ delay: 0.2 }}
           className="text-center text-[#8B92A8] mb-16 max-w-lg mx-auto"
         >
-          Three steps to automate any cross-platform workflow
+          Three steps to automation
         </motion.p>
 
-        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
-          {howItWorksData.map((item, index) => (
-            <motion.div
-              key={item.step}
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: index * 0.15 }}
-              className="group relative"
-            >
-              <div className="bg-[#0F1525] border border-[#1E2538] rounded-2xl p-8 h-full hover:border-[#00E5CC]/30 transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_8px_30px_rgba(0,229,204,0.08)]">
-                <span className="text-sm font-mono text-[#00E5CC]/50 font-bold">{item.step}</span>
-                <div className="w-14 h-14 rounded-xl bg-[#0B0F1A] border border-[#1E2538] flex items-center justify-center mt-3 mb-5 text-2xl group-hover:border-[#00E5CC]/30 transition-colors duration-500">
-                  {item.icon}
+        <div className="max-w-5xl mx-auto">
+          {/* Desktop: horizontal layout with connectors */}
+          <div className="hidden md:grid md:grid-cols-3 gap-0 items-start">
+            {howItWorksSteps.map((item, index) => (
+              <motion.div
+                key={item.step}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: index * 0.15 }}
+                className="group relative flex flex-col items-center text-center"
+              >
+                {/* Step number circle */}
+                <div className="relative z-10 flex h-14 w-14 items-center justify-center rounded-full border-2 border-[#00E5CC] bg-[#0B0F1A] mb-6">
+                  <item.icon className="h-6 w-6 text-[#00E5CC]" />
                 </div>
-                <h3 className="text-xl font-bold text-[#E8EAF0] mb-3">{item.title}</h3>
-                <p className="text-[#8B92A8] text-sm leading-relaxed mb-4">{item.description}</p>
-                <div className="bg-[#0B0F1A] rounded-lg px-4 py-3 border border-[#1E2538]">
-                  <p className="text-xs text-[#5A6178] italic">{item.example}</p>
+
+                {/* Connector line to next step */}
+                {index < howItWorksSteps.length - 1 && (
+                  <div className="absolute top-7 left-[calc(50%+28px)] w-[calc(100%-56px)] h-[2px] z-0">
+                    <div className="h-full w-full bg-gradient-to-r from-[#00E5CC]/40 to-[#00E5CC]/10" />
+                    <ArrowRight className="absolute -right-3 -top-[7px] h-4 w-4 text-[#00E5CC]/40" />
+                  </div>
+                )}
+
+                {/* Card */}
+                <div className="bg-[#0F1525] border border-[#1E2538] rounded-2xl p-6 w-full hover:border-[#00E5CC]/30 transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_8px_30px_rgba(0,229,204,0.08)]">
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#00E5CC]/10 text-xs font-bold font-mono text-[#00E5CC] mb-3">
+                    {item.step}
+                  </span>
+                  <h3 className="text-lg font-bold text-[#E8EAF0] mb-2">{item.title}</h3>
+                  <p className="text-[#8B92A8] text-sm leading-relaxed">{item.description}</p>
                 </div>
-              </div>
-            </motion.div>
-          ))}
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Mobile: vertical layout with connectors */}
+          <div className="flex flex-col items-center gap-0 md:hidden">
+            {howItWorksSteps.map((item, index) => (
+              <motion.div
+                key={item.step}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: index * 0.1 }}
+                className="w-full max-w-sm"
+              >
+                <div className="flex gap-4 items-start">
+                  {/* Left: circle + vertical line */}
+                  <div className="flex flex-col items-center shrink-0">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-[#00E5CC] bg-[#0B0F1A]">
+                      <item.icon className="h-5 w-5 text-[#00E5CC]" />
+                    </div>
+                    {index < howItWorksSteps.length - 1 && (
+                      <div className="w-[2px] h-8 bg-gradient-to-b from-[#00E5CC]/40 to-[#00E5CC]/10 mt-1" />
+                    )}
+                  </div>
+
+                  {/* Right: card */}
+                  <div className="bg-[#0F1525] border border-[#1E2538] rounded-xl p-5 flex-1 mb-2">
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#00E5CC]/10 text-xs font-bold font-mono text-[#00E5CC] mb-2">
+                      {item.step}
+                    </span>
+                    <h3 className="text-base font-bold text-[#E8EAF0] mb-1">{item.title}</h3>
+                    <p className="text-[#8B92A8] text-sm leading-relaxed">{item.description}</p>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
         </div>
       </section>
 
