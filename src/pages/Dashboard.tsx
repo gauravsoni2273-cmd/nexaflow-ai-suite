@@ -1,18 +1,19 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Activity, Zap, CheckCircle, Coins, TrendingUp, Plus, Play, Plug, CreditCard, Lightbulb, Check, ArrowRight, X } from "lucide-react";
+import { Activity, Zap, CheckCircle, Coins, TrendingUp, Plus, Play, Plug, CreditCard, Lightbulb } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { useWorkflows } from "@/hooks/useWorkflows";
 import { useWorkflowRuns } from "@/hooks/useWorkflowRuns";
 import { useOrg } from "@/hooks/useOrg";
-import { useIntegrations } from "@/hooks/useIntegrations";
+
 import { useAuth } from "@/hooks/useAuth";
 import { Skeleton } from "@/components/ui/skeleton";
 import { handleTestRun } from "@/lib/testRun";
 import { timeAgo } from "@/lib/helpers";
+import WelcomeModal from "@/components/WelcomeModal";
 import type { Workflow } from "@/types/database";
 
 function StatusBadge({ status }: { status: string }) {
@@ -58,9 +59,7 @@ export default function Dashboard() {
   const { workflows, loading: wfLoading, refetch: refetchWorkflows } = useWorkflows();
   const { runs, loading: runsLoading, refetch: refetchRuns } = useWorkflowRuns();
   const { org, loading: orgLoading, refetch: refetchOrg } = useOrg();
-  const { integrations } = useIntegrations();
   const { profile } = useAuth();
-  const navigate = useNavigate();
   const [runningTestId, setRunningTestId] = useState<string | null>(null);
   const [showWelcome, setShowWelcome] = useState(false);
 
@@ -68,7 +67,7 @@ export default function Dashboard() {
   const activeCount = activeWorkflows.length;
   const creditBalance = org?.credit_balance ?? 0;
   const creditLimit = org?.monthly_credit_limit ?? 100;
-  const connectedCount = integrations.filter((i) => i.status === "connected").length;
+
 
   const successRuns = runs.filter((r) => r.status === "success").length;
   const avgSuccessRate = runs.length > 0
@@ -84,20 +83,12 @@ export default function Dashboard() {
   const getWorkflowName = (wfId: string) => workflows.find((w) => w.id === wfId)?.name ?? "Unknown Workflow";
   const hasWorkflowsNoRuns = workflows.length > 0 && runs.length === 0;
 
-  // Welcome modal — show once per session for brand new users
+  // Welcome modal — show when onboarding not yet completed
   useEffect(() => {
-    if (!loading && workflows.length === 0 && connectedCount === 0) {
-      const dismissed = sessionStorage.getItem("nexaflow_welcome_dismissed");
-      if (!dismissed) {
-        setShowWelcome(true);
-      }
+    if (!loading && profile && profile.onboarding_completed === false) {
+      setShowWelcome(true);
     }
-  }, [loading, workflows.length, connectedCount]);
-
-  const dismissWelcome = () => {
-    sessionStorage.setItem("nexaflow_welcome_dismissed", "true");
-    setShowWelcome(false);
-  };
+  }, [loading, profile]);
 
   const onTestRun = async (workflow: Workflow) => {
     if (!org || runningTestId) return;
@@ -334,70 +325,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Welcome Modal */}
-      {showWelcome && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-xl bg-black/60">
-          <div
-            className="bg-[#0F1525] border border-[#1E2538] rounded-2xl p-8 max-w-md mx-4 w-full relative"
-            style={{ animation: "welcome-in 0.3s ease-out" }}
-          >
-            <button
-              onClick={dismissWelcome}
-              className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
-
-            <div className="text-center mb-6">
-              <span className="text-2xl">✦</span>
-              <h2 className="mt-2 text-xl font-bold text-foreground">Welcome to NexaFlow</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Your AI-powered workflow engine is ready.</p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-bold text-primary">1</div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-foreground">Connect your tools</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Slack, Jira, Salesforce, and more</p>
-                  <button
-                    onClick={() => { dismissWelcome(); navigate("/dashboard/integrations"); }}
-                    className="mt-1 text-xs text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
-                  >
-                    Go to Integrations <ArrowRight className="h-3 w-3" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-bold text-primary">2</div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-foreground">Create your first AI workflow</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Describe what you want in plain English</p>
-                  <button
-                    onClick={() => { dismissWelcome(); navigate("/dashboard/workflows/new"); }}
-                    className="mt-1 text-xs text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
-                  >
-                    Open AI Builder <ArrowRight className="h-3 w-3" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="rounded-lg bg-[#0B0F1A] border border-[#1E2538] px-4 py-3 text-center">
-                <p className="text-xs text-muted-foreground">You have <span className="font-mono font-bold text-primary">100</span> free credits to start with.</p>
-              </div>
-            </div>
-
-            <Button
-              onClick={dismissWelcome}
-              className="w-full mt-6 gradient-primary text-primary-foreground"
-            >
-              Get Started
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
+      <WelcomeModal open={showWelcome} onClose={() => setShowWelcome(false)} />
     </motion.div>
   );
 }
