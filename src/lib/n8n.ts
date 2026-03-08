@@ -1,18 +1,23 @@
 import type { AgentPlan } from "@/types/database";
 
-const N8N_BASE = import.meta.env.VITE_N8N_WEBHOOK_BASE_URL ?? "";
+// Evaluate at call time, not module load time
+function getWebhookBase() {
+  return import.meta.env.VITE_N8N_WEBHOOK_BASE_URL ?? "";
+}
 
 export async function generateWorkflow(params: {
   org_id: string;
   user_id: string;
   nl_description: string;
 }): Promise<AgentPlan> {
-  if (!N8N_BASE) {
-    throw new Error("N8N webhook URL not configured. Set VITE_N8N_WEBHOOK_BASE_URL in .env");
+  const webhookUrl = getWebhookBase();
+  console.log("WEBHOOK URL:", webhookUrl, "length:", webhookUrl?.length);
+
+  if (!webhookUrl || webhookUrl.length === 0) {
+    throw new Error("DEMO_MODE");
   }
 
-  const url = `${N8N_BASE}/generate`;
-  console.log("Webhook URL:", N8N_BASE);
+  const url = `${webhookUrl}/generate`;
   console.log("Calling:", url);
   console.log("Payload:", params);
 
@@ -22,14 +27,21 @@ export async function generateWorkflow(params: {
     body: JSON.stringify(params),
   });
 
+  // Get raw text first for debugging
+  const rawText = await res.text();
+  console.log("n8n raw response:", rawText);
+
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    console.error("n8n response error:", res.status, text);
+    console.error("n8n response error:", res.status, rawText);
     throw new Error(`Workflow generation failed: ${res.status} ${res.statusText}`);
   }
 
-  const result = await res.json();
-  console.log("n8n response:", result);
+  if (!rawText || rawText.length === 0) {
+    throw new Error("Empty response from n8n");
+  }
+
+  const result = JSON.parse(rawText);
+  console.log("n8n parsed response:", result);
 
   // n8n returns { success, workflow_id, agent_plan, workflow_name }
   if (result.agent_plan) {
@@ -48,10 +60,11 @@ export async function executeWorkflow(params: {
   workflow_id: string;
   trigger_data?: Record<string, unknown>;
 }): Promise<{ run_id: string }> {
-  if (!N8N_BASE) {
-    throw new Error("N8N webhook URL not configured. Set VITE_N8N_WEBHOOK_BASE_URL in .env");
+  const webhookUrl = getWebhookBase();
+  if (!webhookUrl) {
+    throw new Error("N8N webhook URL not configured");
   }
-  const res = await fetch(`${N8N_BASE}/execute`, {
+  const res = await fetch(`${webhookUrl}/execute`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
