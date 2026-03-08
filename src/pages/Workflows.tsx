@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { useWorkflows } from "@/hooks/useWorkflows";
 import { useWorkflowRuns } from "@/hooks/useWorkflowRuns";
 import { useOrg } from "@/hooks/useOrg";
-import { formatDuration } from "@/lib/helpers";
+import { formatDuration, timeAgo } from "@/lib/helpers";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -31,9 +31,59 @@ import {
 } from "@/components/ui/alert-dialog";
 
 function StatusBadge({ status }: { status: string }) {
-  const cls =
-    status === "active" ? "badge-success" : status === "paused" ? "badge-approval" : status === "draft" ? "badge-running" : "badge-failed";
-  return <span className={cls}>{status}</span>;
+  if (status === "active") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+        <span className="relative flex h-2 w-2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+        </span>
+        Active
+      </span>
+    );
+  }
+  if (status === "paused") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 px-2.5 py-0.5 text-xs font-medium text-warning">
+        <span className="h-2 w-2 rounded-full bg-warning" />
+        Paused
+      </span>
+    );
+  }
+  if (status === "draft") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+        <span className="h-2 w-2 rounded-full bg-muted-foreground" />
+        Draft
+      </span>
+    );
+  }
+  // failed
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive">
+      <span className="h-2 w-2 rounded-full bg-destructive" />
+      Failed
+    </span>
+  );
+}
+
+function ToggleSwitch({ active, onChange, disabled }: { active: boolean; onChange: () => void; disabled?: boolean }) {
+  return (
+    <button
+      onClick={onChange}
+      disabled={disabled}
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
+        active ? "bg-primary" : "bg-border"
+      }`}
+      title={active ? "Pause workflow" : "Resume workflow"}
+    >
+      <span
+        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+          active ? "translate-x-[18px]" : "translate-x-[3px]"
+        }`}
+      />
+    </button>
+  );
 }
 
 function healthColor(score: number) {
@@ -44,13 +94,19 @@ function healthColor(score: number) {
 
 export default function Workflows() {
   const { workflows, loading, refetch: refetchWorkflows } = useWorkflows();
-  const { refetch: refetchRuns } = useWorkflowRuns();
+  const { runs, refetch: refetchRuns } = useWorkflowRuns();
   const { org, refetch: refetchOrg } = useOrg();
   const [viewPlan, setViewPlan] = useState<AgentPlan | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [runningTestId, setRunningTestId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const getLastRun = (workflowId: string) => {
+    return runs.find((r) => r.workflow_id === workflowId);
+  };
 
   const handleToggleStatus = async (id: string, currentStatus: string) => {
+    setTogglingId(id);
     const newStatus = currentStatus === "active" ? "paused" : "active";
     const { error } = await supabase
       .from("workflows")
@@ -62,6 +118,7 @@ export default function Workflows() {
       toast.success(`Workflow ${newStatus === "active" ? "resumed" : "paused"}`);
       refetchWorkflows();
     }
+    setTogglingId(null);
   };
 
   const handleDelete = async () => {
@@ -138,9 +195,10 @@ export default function Workflows() {
               <tr className="border-b border-border text-left text-xs text-muted-foreground">
                 <th className="px-6 py-3 font-medium">Name</th>
                 <th className="px-6 py-3 font-medium">Status</th>
+                <th className="px-6 py-3 font-medium">Last Run</th>
                 <th className="px-6 py-3 font-medium">Success Rate</th>
-                <th className="px-6 py-3 font-medium">Avg Duration</th>
                 <th className="px-6 py-3 font-medium">Health</th>
+                <th className="px-6 py-3 font-medium">Toggle</th>
                 <th className="px-6 py-3 font-medium">Actions</th>
               </tr>
             </thead>
@@ -148,23 +206,44 @@ export default function Workflows() {
               {workflows.map((w) => {
                 const healthScore = Math.round(w.success_rate * 0.95);
                 const isRunning = runningTestId === w.id;
+                const lastRun = getLastRun(w.id);
                 return (
                   <tr key={w.id} className="border-b border-border last:border-0 transition-colors hover:surface-hover">
                     <td className="px-6 py-4 font-medium text-foreground">{w.name}</td>
                     <td className="px-6 py-4"><StatusBadge status={w.status} /></td>
                     <td className="px-6 py-4">
+                      {lastRun ? (
+                        <div className="space-y-0.5">
+                          <span className={`text-xs font-medium ${lastRun.status === "success" ? "text-primary" : lastRun.status === "failed" ? "text-destructive" : "text-warning"}`}>
+                            {lastRun.status}
+                          </span>
+                          <p className="text-xs text-muted-foreground">{timeAgo(lastRun.started_at)}</p>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No runs</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
                       <span className={`font-mono ${w.success_rate > 90 ? "text-primary" : w.success_rate > 70 ? "text-warning" : "text-destructive"}`}>
                         {w.success_rate}%
                       </span>
                     </td>
-                    <td className="px-6 py-4 font-mono text-muted-foreground">{formatDuration(w.avg_execution_ms)}</td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <Progress value={healthScore} className={`h-1.5 w-16 bg-secondary [&>div]:${healthColor(healthScore)}`} />
+                        <Progress value={healthScore} className={`h-1.5 w-16 bg-secondary ${healthScore > 80 ? "[&>div]:bg-primary" : healthScore > 60 ? "[&>div]:bg-warning" : "[&>div]:bg-destructive"}`} />
                         <span className={`font-mono text-xs ${healthScore > 80 ? "text-primary" : healthScore > 60 ? "text-warning" : "text-destructive"}`}>
                           {healthScore}
                         </span>
                       </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      {(w.status === "active" || w.status === "paused") && (
+                        <ToggleSwitch
+                          active={w.status === "active"}
+                          onChange={() => handleToggleStatus(w.id, w.status)}
+                          disabled={togglingId === w.id}
+                        />
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-1">
@@ -192,15 +271,6 @@ export default function Workflows() {
                             <Eye className="h-3.5 w-3.5" />
                           </Button>
                         )}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-                          onClick={() => handleToggleStatus(w.id, w.status)}
-                          title={w.status === "active" ? "Pause" : "Resume"}
-                        >
-                          {w.status === "active" ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-                        </Button>
                         <Button
                           size="sm"
                           variant="ghost"

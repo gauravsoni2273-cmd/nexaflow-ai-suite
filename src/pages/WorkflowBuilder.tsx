@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+import { useNavigate, Link } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Zap, Shield, Sparkles, X } from "lucide-react";
+import { Zap, Shield, Sparkles, X, CheckCircle2, AlertTriangle, Plug, Rocket } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrg } from "@/hooks/useOrg";
+import { useIntegrations } from "@/hooks/useIntegrations";
 import { generateWorkflow } from "@/lib/n8n";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -43,9 +44,13 @@ export default function WorkflowBuilder() {
   const [plan, setPlan] = useState<AgentPlan | null>(null);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [deploying, setDeploying] = useState(false);
+  const [deployed, setDeployed] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showMissingIntegrations, setShowMissingIntegrations] = useState(false);
+  const [missingPlatforms, setMissingPlatforms] = useState<string[]>([]);
   const { user, profile } = useAuth();
   const { org, refetch: refetchOrg } = useOrg();
+  const { integrations } = useIntegrations();
   const navigate = useNavigate();
 
   const creditBalance = org?.credit_balance ?? 0;
@@ -67,6 +72,7 @@ export default function WorkflowBuilder() {
     setGenerating(true);
     setGenStep(0);
     setIsDemoMode(false);
+    setDeployed(false);
 
     const useDemoFallback = () => {
       setIsDemoMode(true);
@@ -140,6 +146,44 @@ export default function WorkflowBuilder() {
     }
   };
 
+  const getRequiredPlatforms = (agentPlan: AgentPlan): string[] => {
+    const platforms = new Set<string>();
+    for (const step of agentPlan.steps) {
+      if (step.platform) platforms.add(step.platform.toLowerCase());
+    }
+    return Array.from(platforms);
+  };
+
+  const checkIntegrations = (): string[] => {
+    if (!plan) return [];
+    const required = getRequiredPlatforms(plan);
+    const connected = new Set(
+      integrations
+        .filter((i) => i.status === "connected")
+        .map((i) => i.platform.toLowerCase())
+    );
+    return required.filter((p) => !connected.has(p));
+  };
+
+  const determineTriggerType = (agentPlan: AgentPlan): string => {
+    const triggerDesc = (agentPlan.trigger.description || "").toLowerCase();
+    const triggerType = (agentPlan.trigger.type || "").toLowerCase();
+    // Check if Google Sheets is the trigger
+    const firstStep = agentPlan.steps[0];
+    if (
+      triggerDesc.includes("google sheet") ||
+      triggerDesc.includes("spreadsheet") ||
+      triggerDesc.includes("new row") ||
+      (firstStep?.platform === "google_workspace" && (triggerDesc.includes("new") || triggerDesc.includes("row")))
+    ) {
+      return "google_sheets_new_row";
+    }
+    if (triggerType === "schedule" || triggerDesc.includes("every") || triggerDesc.includes("scheduled")) {
+      return "schedule";
+    }
+    return "manual";
+  };
+
   const handleDeploy = async () => {
     if (!plan || !profile?.org_id || !user?.id) return;
 
@@ -148,16 +192,52 @@ export default function WorkflowBuilder() {
       return;
     }
 
+    // Check integrations
+    const missing = checkIntegrations();
+    if (missing.length > 0) {
+      setMissingPlatforms(missing);
+      setShowMissingIntegrations(true);
+      return;
+    }
+
     setDeploying(true);
     try {
+      const triggerType = determineTriggerType(plan);
+
+      // Build metadata: include integration refs
+      const metadata: Record<string, unknown> = { ...plan as unknown as Record<string, unknown> };
+
+      // Add Google Sheets metadata if relevant
+      if (triggerType === "google_sheets_new_row") {
+        const gsIntegration = integrations.find(
+          (i) => i.platform === "google_workspace" && i.status === "connected" && i.auth_token_enc
+        );
+        if (gsIntegration?.auth_token_enc) {
+          try {
+            const gsData = JSON.parse(gsIntegration.auth_token_enc);
+            metadata.sheet_id = gsData.sheet_id;
+            metadata.sheet_name = gsData.sheet_name;
+            metadata.last_row_count = 0;
+          } catch { /* ignore parse errors */ }
+        }
+      }
+
+      // Add Slack webhook reference if relevant
+      const slackIntegration = integrations.find(
+        (i) => i.platform === "slack" && i.status === "connected"
+      );
+      if (slackIntegration) {
+        metadata.slack_connected = true;
+      }
+
       const { error: wfError } = await supabase.from("workflows").insert({
         org_id: profile.org_id,
         created_by: user.id,
         name: plan.workflow_name,
         nl_description: prompt,
-        agent_plan_json: plan as unknown as Record<string, unknown>,
+        agent_plan_json: metadata,
         status: "active",
-        trigger_type: plan.trigger.type,
+        trigger_type: triggerType,
       });
       if (wfError) throw wfError;
 
@@ -170,13 +250,20 @@ export default function WorkflowBuilder() {
       }
 
       refetchOrg();
+      setDeployed(true);
       toast.success("Workflow deployed! 50 credits used.");
-      navigate("/dashboard/workflows");
     } catch {
       toast.error("Failed to deploy workflow");
     } finally {
       setDeploying(false);
     }
+  };
+
+  const handleReset = () => {
+    setPlan(null);
+    setPrompt("");
+    setDeployed(false);
+    setIsDemoMode(false);
   };
 
   const handleUpgrade = () => {
@@ -197,6 +284,7 @@ export default function WorkflowBuilder() {
   };
 
   const steps = plan?.steps ?? [];
+  const deployedTriggerType = plan ? determineTriggerType(plan) : "manual";
 
   return (
     <motion.div
@@ -212,11 +300,81 @@ export default function WorkflowBuilder() {
         <span className={`font-mono font-medium ${creditBalance < 50 ? "text-destructive" : creditBalance < 100 ? "text-warning" : "text-primary"}`}>
           {creditBalance.toLocaleString()}
         </span>
-        <span className="text-muted-foreground">\u00B7</span>
+        <span className="text-muted-foreground">{"\u00B7"}</span>
         <span className="text-xs text-muted-foreground">{DEPLOY_CREDIT_COST} credits per workflow</span>
       </div>
 
-      {!plan && !generating ? (
+      {/* ── Deploy Success State ── */}
+      {deployed && plan ? (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="mx-auto max-w-lg"
+        >
+          <div className="surface-card p-8 text-center">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.2, type: "spring", stiffness: 200, damping: 15 }}
+              className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/20"
+            >
+              <Rocket className="h-8 w-8 text-primary" />
+            </motion.div>
+
+            <motion.h2
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className="text-xl font-bold text-foreground mb-2"
+            >
+              Workflow Deployed!
+            </motion.h2>
+
+            <motion.p
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="text-sm text-muted-foreground mb-1"
+            >
+              <span className="font-medium text-foreground">{plan.workflow_name}</span> is now active.
+            </motion.p>
+
+            <motion.p
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 }}
+              className="text-xs text-muted-foreground mb-6"
+            >
+              {deployedTriggerType === "google_sheets_new_row"
+                ? "It will check for new Google Sheets rows every 2 minutes."
+                : deployedTriggerType === "schedule"
+                ? "It will run on the configured schedule."
+                : "It will run when triggered manually or by events."}
+            </motion.p>
+
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.7 }}
+              className="flex gap-3"
+            >
+              <Link to="/dashboard/workflows" className="flex-1">
+                <Button className="w-full gradient-primary text-primary-foreground">
+                  View Workflows
+                </Button>
+              </Link>
+              <Button
+                variant="outline"
+                className="flex-1 border-border"
+                onClick={handleReset}
+              >
+                Build Another
+              </Button>
+            </motion.div>
+          </div>
+        </motion.div>
+      ) : !plan && !generating ? (
         <div className="mx-auto max-w-2xl space-y-4">
           {/* Example chips */}
           <div className="flex flex-wrap gap-2">
@@ -287,7 +445,7 @@ export default function WorkflowBuilder() {
             <div className={`mb-4 flex items-center gap-2 rounded-lg border p-3 ${isDemoMode ? "border-warning/20 bg-warning/5" : "border-primary/20 bg-primary/5"}`}>
               <Sparkles className={`h-4 w-4 shrink-0 ${isDemoMode ? "text-warning" : "text-primary"}`} />
               <p className={`text-xs ${isDemoMode ? "text-warning" : "text-primary"}`}>
-                {isDemoMode ? "Sample workflow plan" : "✦ AI-generated workflow plan"}
+                {isDemoMode ? "Sample workflow plan" : "\u2726 AI-generated workflow plan"}
               </p>
             </div>
             {steps.map((step, i) => {
@@ -385,7 +543,78 @@ export default function WorkflowBuilder() {
         </div>
       )}
 
-      {/* Upgrade Modal */}
+      {/* ── Missing Integrations Modal ── */}
+      <AnimatePresence>
+        {showMissingIntegrations && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-xl bg-black/60"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.2 }}
+              className="bg-[#0F1525] border border-[#1E2538] rounded-2xl p-6 max-w-md mx-4 w-full relative"
+            >
+              <button
+                onClick={() => setShowMissingIntegrations(false)}
+                className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+
+              <div className="flex items-center gap-3 mb-5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning/20">
+                  <AlertTriangle className="h-5 w-5 text-warning" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-foreground">Connect Required Integrations</h2>
+                  <p className="text-xs text-muted-foreground">These platforms need to be connected before deploying</p>
+                </div>
+              </div>
+
+              <div className="space-y-3 mb-6">
+                {missingPlatforms.map((platform) => {
+                  const icon = platformIcons[platform];
+                  return (
+                    <div
+                      key={platform}
+                      className="flex items-center justify-between bg-[#0B0F1A] border border-[#1E2538] rounded-lg px-4 py-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">{icon?.emoji ?? "\u2699\uFE0F"}</span>
+                        <span className="text-sm font-medium text-foreground">{icon?.label ?? platform}</span>
+                      </div>
+                      <span className="text-xs text-destructive font-medium">Not connected</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  className="flex-1 border-border"
+                  onClick={() => setShowMissingIntegrations(false)}
+                >
+                  Cancel
+                </Button>
+                <Link to="/dashboard/integrations" className="flex-1">
+                  <Button className="w-full gradient-primary text-primary-foreground">
+                    <Plug className="mr-2 h-4 w-4" />
+                    Connect Now
+                  </Button>
+                </Link>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Upgrade Modal ── */}
       {showUpgradeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-xl bg-black/60">
           <div
