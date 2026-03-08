@@ -38,7 +38,7 @@ export default function SettingsPage() {
   });
 
   const creditBalance = org?.credit_balance ?? 0;
-  const creditLimit = org?.monthly_credit_limit ?? 500;
+  const creditLimit = org?.monthly_credit_limit ?? 100;
   const consumed = creditLimit - creditBalance;
 
   const handleSaveProfile = async () => {
@@ -195,7 +195,7 @@ export default function SettingsPage() {
             <div className="surface-card p-5">
               <span className="text-xs text-muted-foreground">Balance</span>
               {orgLoading ? <Skeleton className="h-8 w-20 mt-1" /> : (
-                <p className={`mt-1 text-2xl font-bold font-mono ${creditBalance < 100 ? "text-destructive" : creditBalance < 500 ? "text-warning" : "text-primary"}`}>
+                <p className={`mt-1 text-2xl font-bold font-mono ${creditLimit > 0 && (creditBalance / creditLimit) * 100 < 20 ? "text-destructive" : creditLimit > 0 && (creditBalance / creditLimit) * 100 < 50 ? "text-warning" : "text-primary"}`}>
                   {creditBalance.toLocaleString()}
                 </p>
               )}

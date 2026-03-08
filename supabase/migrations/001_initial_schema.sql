@@ -16,8 +16,8 @@ CREATE TABLE organizations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   plan plan_type NOT NULL DEFAULT 'free',
-  credit_balance INTEGER NOT NULL DEFAULT 500,
-  monthly_credit_limit INTEGER NOT NULL DEFAULT 500,
+  credit_balance INTEGER NOT NULL DEFAULT 100,
+  monthly_credit_limit INTEGER NOT NULL DEFAULT 100,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

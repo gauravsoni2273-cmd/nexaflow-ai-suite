@@ -59,6 +59,11 @@ export default function WorkflowBuilder() {
   }, [generating, genStep]);
 
   const handleGenerate = async () => {
+    if (creditBalance < DEPLOY_CREDIT_COST) {
+      setShowUpgradeModal(true);
+      return;
+    }
+
     setGenerating(true);
     setGenStep(0);
     setIsDemoMode(false);
