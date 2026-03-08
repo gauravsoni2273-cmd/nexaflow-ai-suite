@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Check, Lock, Loader2, ExternalLink, Copy, X } from "lucide-react";
+import { Check, Lock, Loader2, ExternalLink, Copy, X, ChevronDown, FileSpreadsheet } from "lucide-react";
 import { platformIcons } from "@/types/database";
 import { toast } from "sonner";
 
@@ -151,7 +151,8 @@ function SlackConnectModal({ open, onClose, onSave }: SlackConnectModalProps) {
 
 // ── Google Sheets Connect Modal ──
 
-const SERVICE_ACCOUNT_EMAIL = "nexaflow-bot@nexaflow-sheets.iam.gserviceaccount.com";
+const SERVICE_ACCOUNT_EMAIL = "nexaflow-bot@nexaflow-488510.iam.gserviceaccount.com";
+const FETCH_TABS_URL = "https://n8n-production-d298.up.railway.app/webhook/fetch-sheet-tabs";
 
 interface GoogleSheetsConnectModalProps {
   open: boolean;
@@ -167,7 +168,74 @@ function GoogleSheetsConnectModal({ open, onClose, onSave, orgId }: GoogleSheets
   const [tested, setTested] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Tab fetching state
+  const [fetchingTabs, setFetchingTabs] = useState(false);
+  const [tabs, setTabs] = useState<string[] | null>(null);
+  const [spreadsheetTitle, setSpreadsheetTitle] = useState<string | null>(null);
+  const [tabFetchError, setTabFetchError] = useState<string | null>(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastFetchedId = useRef("");
+
   const isValidId = sheetId.length > 10;
+
+  // Debounce fetch tabs on sheet ID change
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (!isValidId || sheetId === lastFetchedId.current) return;
+
+    // Reset tab state when ID changes
+    setTabs(null);
+    setSpreadsheetTitle(null);
+    setTabFetchError(null);
+    setTested(false);
+
+    debounceRef.current = setTimeout(() => {
+      fetchTabs(sheetId);
+    }, 500);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [sheetId]);
+
+  const fetchTabs = async (id: string) => {
+    setFetchingTabs(true);
+    setTabFetchError(null);
+    setTabs(null);
+    setSpreadsheetTitle(null);
+    try {
+      const res = await fetch(FETCH_TABS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sheet_id: id }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.tabs) && data.tabs.length > 0) {
+          setTabs(data.tabs);
+          setSpreadsheetTitle(data.spreadsheet_title || null);
+          setSheetName(data.tabs[0]);
+          lastFetchedId.current = id;
+        } else {
+          setTabFetchError(
+            data.error || "Could not read tabs. Make sure you've shared the sheet with the service account."
+          );
+        }
+      } else {
+        setTabFetchError(
+          `Could not access this sheet. Make sure you've shared it with ${SERVICE_ACCOUNT_EMAIL}`
+        );
+      }
+    } catch {
+      setTabFetchError(
+        `Could not access this sheet. Make sure you've shared it with ${SERVICE_ACCOUNT_EMAIL}`
+      );
+    } finally {
+      setFetchingTabs(false);
+    }
+  };
 
   const handleCopyEmail = () => {
     navigator.clipboard.writeText(SERVICE_ACCOUNT_EMAIL);
@@ -219,6 +287,10 @@ function GoogleSheetsConnectModal({ open, onClose, onSave, orgId }: GoogleSheets
     setTesting(false);
     setTested(false);
     setSaving(false);
+    setTabs(null);
+    setSpreadsheetTitle(null);
+    setTabFetchError(null);
+    lastFetchedId.current = "";
     onClose();
   };
 
@@ -258,27 +330,99 @@ function GoogleSheetsConnectModal({ open, onClose, onSave, orgId }: GoogleSheets
                 </div>
               </div>
 
+              {/* Sheet ID + Fetch Tabs */}
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-foreground">Google Sheet ID</label>
-                <Input
-                  value={sheetId}
-                  onChange={(e) => { setSheetId(e.target.value); setTested(false); }}
-                  placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
-                  className="bg-background border-border text-sm font-mono"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    value={sheetId}
+                    onChange={(e) => { setSheetId(e.target.value); setTested(false); }}
+                    placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
+                    className="bg-background border-border text-sm font-mono flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-border shrink-0 px-3 h-9"
+                    disabled={!isValidId || fetchingTabs}
+                    onClick={() => fetchTabs(sheetId)}
+                  >
+                    {fetchingTabs ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-[#00E5CC]" />
+                    ) : (
+                      <span className="text-xs">Fetch Tabs</span>
+                    )}
+                  </Button>
+                </div>
                 <p className="text-xs text-muted-foreground">
                   Find this in the URL: docs.google.com/spreadsheets/d/<span className="text-primary">{"<ID>"}</span>/edit
                 </p>
               </div>
 
+              {/* Spreadsheet title confirmation */}
+              {spreadsheetTitle && (
+                <div className="flex items-center gap-2 rounded-lg bg-primary/5 border border-primary/20 px-3 py-2">
+                  <FileSpreadsheet className="h-3.5 w-3.5 shrink-0 text-primary" />
+                  <p className="text-xs text-primary">
+                    Found: <span className="font-medium">{spreadsheetTitle}</span>
+                  </p>
+                </div>
+              )}
+
+              {/* Tab fetch error */}
+              {tabFetchError && (
+                <div className="rounded-lg bg-destructive/5 border border-destructive/20 px-3 py-2">
+                  <p className="text-xs text-destructive">{tabFetchError}</p>
+                </div>
+              )}
+
+              {/* Sheet / Tab selector */}
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-foreground">Sheet / Tab Name</label>
-                <Input
-                  value={sheetName}
-                  onChange={(e) => setSheetName(e.target.value)}
-                  placeholder="Sheet1"
-                  className="bg-background border-border text-sm"
-                />
+                {tabs && tabs.length > 0 ? (
+                  /* Dropdown when tabs are fetched */
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setDropdownOpen(!dropdownOpen)}
+                      className="flex w-full items-center justify-between rounded-md bg-[#0F1525] border border-[#1E2538] px-3 py-2 text-sm text-foreground hover:border-[#00E5CC]/30 transition-colors"
+                    >
+                      <span>{sheetName}</span>
+                      <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${dropdownOpen ? "rotate-180" : ""}`} />
+                    </button>
+                    {dropdownOpen && (
+                      <div className="absolute z-10 mt-1 w-full rounded-md bg-[#0F1525] border border-[#1E2538] py-1 shadow-lg max-h-40 overflow-y-auto">
+                        {tabs.map((tab) => (
+                          <button
+                            key={tab}
+                            type="button"
+                            onClick={() => {
+                              setSheetName(tab);
+                              setDropdownOpen(false);
+                              setTested(false);
+                            }}
+                            className={`flex w-full items-center gap-2 px-3 py-1.5 text-sm transition-colors ${
+                              tab === sheetName
+                                ? "bg-primary/10 text-primary"
+                                : "text-foreground hover:bg-[#1E2538]"
+                            }`}
+                          >
+                            {tab === sheetName && <Check className="h-3 w-3 shrink-0" />}
+                            <span className={tab === sheetName ? "" : "pl-5"}>{tab}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* Fallback text input */
+                  <Input
+                    value={sheetName}
+                    onChange={(e) => { setSheetName(e.target.value); setTested(false); }}
+                    placeholder="Sheet1"
+                    className="bg-background border-border text-sm"
+                  />
+                )}
               </div>
 
               <div className="flex gap-3 pt-1">
