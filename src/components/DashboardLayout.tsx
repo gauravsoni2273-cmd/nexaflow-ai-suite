@@ -36,7 +36,7 @@ export default function DashboardLayout() {
   const { org } = useOrg();
 
   const creditBalance = org?.credit_balance ?? 0;
-  const creditLimit = org?.monthly_credit_limit ?? 500;
+  const creditLimit = org?.monthly_credit_limit ?? 100;
   const creditPct = creditLimit > 0 ? (creditBalance / creditLimit) * 100 : 0;
 
   const isActive = (path: string) =>
@@ -85,11 +85,11 @@ export default function DashboardLayout() {
         <div className="border-t border-border p-4">
           <div className="mb-2 flex items-center justify-between text-xs">
             <span className="text-muted-foreground">Credits</span>
-            <span className={`font-mono font-medium ${creditBalance < 100 ? "text-destructive" : creditBalance < 500 ? "text-warning" : "text-primary"}`}>
+            <span className={`font-mono font-medium ${creditPct < 20 ? "text-destructive" : creditPct < 50 ? "text-warning" : "text-primary"}`}>
               {creditBalance.toLocaleString()} / {creditLimit.toLocaleString()}
             </span>
           </div>
-          <Progress value={creditPct} className={`h-1.5 bg-secondary [&>div]:${creditBalance < 100 ? "bg-destructive" : creditBalance < 500 ? "bg-warning" : "bg-primary"}`} />
+          <Progress value={creditPct} className={`h-1.5 bg-secondary ${creditPct < 20 ? "[&>div]:bg-destructive" : creditPct < 50 ? "[&>div]:bg-warning" : "[&>div]:bg-primary"}`} />
         </div>
       )}
 

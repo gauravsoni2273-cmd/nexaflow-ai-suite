@@ -66,7 +66,7 @@ export default function WorkflowBuilder() {
     const useDemoFallback = () => {
       setIsDemoMode(true);
       setPlan({
-        workflow_name: "Demo: " + (prompt.slice(0, 30) || "New Workflow") + "...",
+        workflow_name: (prompt.slice(0, 40) || "New Workflow"),
         trigger: { type: "webhook", description: "Triggered by event" },
         steps: fallbackSteps.map((s) => ({
           ...s,
@@ -123,7 +123,7 @@ export default function WorkflowBuilder() {
 
       if (msg === "DEMO_MODE") {
         console.log("No webhook URL, using demo mode");
-        toast.info("Demo mode — showing sample plan");
+        toast.info("Showing sample workflow plan");
         useDemoFallback();
       } else {
         // Real API error — show error toast but do NOT overwrite with demo plan
@@ -282,7 +282,7 @@ export default function WorkflowBuilder() {
             <div className={`mb-4 flex items-center gap-2 rounded-lg border p-3 ${isDemoMode ? "border-warning/20 bg-warning/5" : "border-primary/20 bg-primary/5"}`}>
               <Sparkles className={`h-4 w-4 shrink-0 ${isDemoMode ? "text-warning" : "text-primary"}`} />
               <p className={`text-xs ${isDemoMode ? "text-warning" : "text-primary"}`}>
-                {isDemoMode ? "Demo mode — sample workflow plan" : "✦ AI-generated workflow plan"}
+                {isDemoMode ? "Sample workflow plan" : "✦ AI-generated workflow plan"}
               </p>
             </div>
             {steps.map((step, i) => {

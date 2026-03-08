@@ -68,7 +68,6 @@ export default function Dashboard() {
   const creditBalance = org?.credit_balance ?? 0;
   const creditLimit = org?.monthly_credit_limit ?? 100;
 
-
   const successRuns = runs.filter((r) => r.status === "success").length;
   const avgSuccessRate = runs.length > 0
     ? ((successRuns / runs.length) * 100).toFixed(1)
@@ -154,9 +153,9 @@ export default function Dashboard() {
                 </div>
                 {m.total !== undefined && (
                   <div className="mt-3">
-                    <Progress value={m.total > 0 ? (m.remaining! / m.total) * 100 : 0} className={`h-1.5 bg-secondary [&>div]:${creditBalance < 30 ? "bg-destructive" : creditBalance < 100 ? "bg-warning" : "bg-primary"}`} />
+                    <Progress value={m.total > 0 ? (m.remaining! / m.total) * 100 : 0} className={`h-1.5 bg-secondary ${(m.remaining! / m.total!) * 100 < 20 ? "[&>div]:bg-destructive" : (m.remaining! / m.total!) * 100 < 50 ? "[&>div]:bg-warning" : "[&>div]:bg-primary"}`} />
                     <p className="mt-1 text-xs text-muted-foreground">
-                      <span className={`font-mono ${creditBalance < 30 ? "text-destructive" : creditBalance < 100 ? "text-warning" : "text-primary"}`}>{m.remaining!.toLocaleString()}</span> / {m.total.toLocaleString()}
+                      <span className={`font-mono ${(m.remaining! / m.total!) * 100 < 20 ? "text-destructive" : (m.remaining! / m.total!) * 100 < 50 ? "text-warning" : "text-primary"}`}>{m.remaining!.toLocaleString()}</span> / {m.total.toLocaleString()}
                     </p>
                   </div>
                 )}
