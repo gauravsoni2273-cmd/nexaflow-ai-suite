@@ -1,0 +1,133 @@
+{
+  "name": "NexaFlow: Test Sheets Connection",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "test-sheets",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "test-sheets"
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.body.sheet_id }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $json.body.sheet_name || 'Sheet1' }}"
+        },
+        "options": {
+          "range": "A1:ZZ1"
+        }
+      },
+      "id": "read-sheet-test",
+      "name": "Read Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [250, 300],
+      "credentials": {
+        "googleSheetsApi": {
+          "id": "",
+          "name": "Google Sheets Service Account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all();\nconst firstRow = rows[0]?.json || {};\nconst headers = Object.keys(firstRow).filter(k => k !== 'row_number');\n\nreturn [{\n  json: {\n    success: true,\n    headers: headers,\n    message: `Sheet accessible! Found ${headers.length} column(s): ${headers.join(', ')}`\n  }\n}];"
+      },
+      "id": "extract-headers",
+      "name": "Extract Headers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "success-response",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [750, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    success: false,\n    error: \"Cannot access sheet. Make sure you shared it with the service account email.\"\n  }\n}];"
+      },
+      "id": "error-format",
+      "name": "Format Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "error-response",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [750, 400]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [{ "node": "Read Google Sheet", "type": "main", "index": 0 }]
+      ]
+    },
+    "Read Google Sheet": {
+      "main": [
+        [{ "node": "Extract Headers", "type": "main", "index": 0 }],
+        [{ "node": "Format Error", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extract Headers": {
+      "main": [
+        [{ "node": "Success Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Format Error": {
+      "main": [
+        [{ "node": "Error Response", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "instanceId": "nexaflow-test-sheets-v1"
+  },
+  "tags": [
+    { "name": "nexaflow" },
+    { "name": "google-sheets" },
+    { "name": "test" }
+  ]
+}

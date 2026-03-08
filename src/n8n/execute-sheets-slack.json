@@ -1,0 +1,353 @@
+{
+  "name": "NexaFlow: Execute Google Sheets → Slack",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://ohjivitbppddrytsfthg.supabase.co/rest/v1/workflows",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "status", "value": "eq.active" },
+            { "name": "trigger_type", "value": "eq.google_sheets_new_row" },
+            { "name": "select", "value": "*" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+            { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false
+            }
+          }
+        }
+      },
+      "id": "fetch-workflows",
+      "name": "Fetch Active Workflows",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-empty",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "if-no-workflows",
+      "name": "IF Has Workflows",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {},
+      "id": "no-op-stop",
+      "name": "No Active Workflows",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [750, 500]
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "split-batches",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://ohjivitbppddrytsfthg.supabase.co/rest/v1/integrations",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "org_id", "value": "=eq.{{ $json.org_id }}" },
+            { "name": "status", "value": "eq.connected" },
+            { "name": "select", "value": "*" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+            { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false
+            }
+          }
+        }
+      },
+      "id": "fetch-integrations",
+      "name": "Fetch Integrations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const integrations = $input.all();\nconst workflow = $('Split In Batches').first().json;\n\nlet slackWebhook = '';\nlet sheetId = '';\nlet sheetName = 'Sheet1';\n\nfor (const item of integrations) {\n  const data = item.json;\n  if (data.platform === 'slack') {\n    slackWebhook = data.auth_token_enc;\n  }\n  if (data.platform === 'google_workspace') {\n    try {\n      const config = JSON.parse(data.auth_token_enc);\n      sheetId = config.sheet_id;\n      sheetName = config.sheet_name || 'Sheet1';\n    } catch(e) {\n      sheetId = data.auth_token_enc;\n    }\n  }\n}\n\nconst lastRowCount = workflow.agent_plan_json?.last_row_count || 0;\n\nreturn [{\n  json: {\n    workflow_id: workflow.id,\n    org_id: workflow.org_id,\n    workflow_name: workflow.name,\n    slackWebhook,\n    sheetId,\n    sheetName,\n    lastRowCount\n  }\n}];"
+      },
+      "id": "extract-config",
+      "name": "Extract Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.sheetId }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $json.sheetName }}"
+        },
+        "options": {}
+      },
+      "id": "read-sheet",
+      "name": "Read Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1500, 300],
+      "credentials": {
+        "googleSheetsApi": {
+          "id": "",
+          "name": "Google Sheets Service Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('Extract Config').first().json;\nconst allRows = $input.all();\nconst lastRowCount = config.lastRowCount;\nconst currentRowCount = allRows.length;\n\nif (currentRowCount > lastRowCount) {\n  const newRows = allRows.slice(lastRowCount);\n  return newRows.map(row => ({\n    json: {\n      ...row.json,\n      _workflow_id: config.workflow_id,\n      _org_id: config.org_id,\n      _workflow_name: config.workflow_name,\n      _slackWebhook: config.slackWebhook,\n      _currentRowCount: currentRowCount,\n      _is_new: true\n    }\n  }));\n}\n\n// No new rows — still update to avoid reprocessing\nreturn [{ json: { _is_new: false, _workflow_id: config.workflow_id, _currentRowCount: currentRowCount } }];"
+      },
+      "id": "check-new-rows",
+      "name": "Check New Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1750, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-is-new",
+              "leftValue": "={{ $json._is_new }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "if-new-rows",
+      "name": "IF New Rows",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json._slackWebhook }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"blocks\": [\n    {\n      \"type\": \"header\",\n      \"text\": { \"type\": \"plain_text\", \"text\": \"📊 New Row Detected!\" }\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Workflow:* {{ $json._workflow_name }}\\n*Row data:*\\n{{ Object.entries($json).filter(([k]) => !k.startsWith('_')).map(([k,v]) => `• ${k}: ${v}`).join('\\n') }}\"\n      }\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "send-slack",
+      "name": "Send Slack Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2250, 200]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://ohjivitbppddrytsfthg.supabase.co/rest/v1/workflows?id=eq.{{ $json._workflow_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+            { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ agent_plan_json: Object.assign({}, $('Split In Batches').first().json.agent_plan_json || {}, { last_row_count: $json._currentRowCount }) }) }}",
+        "options": {}
+      },
+      "id": "update-row-count",
+      "name": "Update Row Count",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2500, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ohjivitbppddrytsfthg.supabase.co/rest/v1/workflow_runs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+            { "name": "Authorization", "value": "Bearer YOUR_SUPABASE_SERVICE_ROLE_KEY" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"workflow_id\": \"{{ $json._workflow_id }}\",\n  \"status\": \"success\",\n  \"steps_json\": [{\"step\": \"read_sheet\", \"status\": \"success\"}, {\"step\": \"send_slack\", \"status\": \"success\"}],\n  \"credits_consumed\": 0,\n  \"started_at\": \"{{ new Date().toISOString() }}\",\n  \"completed_at\": \"{{ new Date().toISOString() }}\"\n}",
+        "options": {}
+      },
+      "id": "log-success",
+      "name": "Log Success Run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2500, 100]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [{ "node": "Fetch Active Workflows", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fetch Active Workflows": {
+      "main": [
+        [{ "node": "IF Has Workflows", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF Has Workflows": {
+      "main": [
+        [{ "node": "Split In Batches", "type": "main", "index": 0 }],
+        [{ "node": "No Active Workflows", "type": "main", "index": 0 }]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [{ "node": "Fetch Integrations", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Fetch Integrations": {
+      "main": [
+        [{ "node": "Extract Config", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extract Config": {
+      "main": [
+        [{ "node": "Read Google Sheet", "type": "main", "index": 0 }]
+      ]
+    },
+    "Read Google Sheet": {
+      "main": [
+        [{ "node": "Check New Rows", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check New Rows": {
+      "main": [
+        [{ "node": "IF New Rows", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF New Rows": {
+      "main": [
+        [{ "node": "Send Slack Message", "type": "main", "index": 0 }],
+        [{ "node": "Update Row Count", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send Slack Message": {
+      "main": [
+        [
+          { "node": "Log Success Run", "type": "main", "index": 0 },
+          { "node": "Update Row Count", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "instanceId": "nexaflow-sheets-slack-v1"
+  },
+  "tags": [
+    { "name": "nexaflow" },
+    { "name": "google-sheets" },
+    { "name": "slack" }
+  ]
+}
