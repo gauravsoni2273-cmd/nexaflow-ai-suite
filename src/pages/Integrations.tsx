@@ -38,20 +38,40 @@ export default function Integrations() {
     };
   });
 
-  const handleConnect = async (platform: string) => {
+  const handleConnectSlack = async (webhookUrl: string) => {
     if (!profile?.org_id) return;
     const { error } = await supabase.from("integrations").insert({
       org_id: profile.org_id,
-      platform,
+      platform: "slack",
+      auth_token_enc: webhookUrl,
       status: "connected",
       last_synced_at: new Date().toISOString(),
     });
     if (error) {
-      toast.error(`Failed to connect ${platform}`);
+      toast.error("Failed to connect Slack");
     } else {
-      toast.success(`${platformIcons[platform]?.label ?? platform} connected!`);
+      toast.success("Slack connected!");
       refetch();
     }
+    setConnectPlatform(null);
+  };
+
+  const handleConnectGoogleSheets = async (sheetId: string, sheetName: string) => {
+    if (!profile?.org_id) return;
+    const { error } = await supabase.from("integrations").insert({
+      org_id: profile.org_id,
+      platform: "google_workspace",
+      auth_token_enc: JSON.stringify({ sheet_id: sheetId, sheet_name: sheetName }),
+      status: "connected",
+      last_synced_at: new Date().toISOString(),
+    });
+    if (error) {
+      toast.error("Failed to connect Google Sheets");
+    } else {
+      toast.success("Google Sheets connected!");
+      refetch();
+    }
+    setConnectPlatform(null);
   };
 
   const handleDisconnect = async (id: string, platform: string) => {
@@ -155,8 +175,10 @@ export default function Integrations() {
       {/* Connect Modal */}
       <IntegrationConnectModal
         platform={connectPlatform}
+        orgId={profile?.org_id ?? ""}
         onClose={() => setConnectPlatform(null)}
-        onConnect={handleConnect}
+        onConnectSlack={handleConnectSlack}
+        onConnectGoogleSheets={handleConnectGoogleSheets}
       />
 
       {/* Disconnect Modal */}
